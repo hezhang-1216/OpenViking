@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: AGPL-3.0
 
+import re
 import time
 from unittest.mock import AsyncMock
 
@@ -565,6 +566,37 @@ async def test_grep_in_files_generates_context_from_single_read(monkeypatch):
         }
     ]
     read.assert_awaited_once_with("viking://resources/a.md", ctx=None)
+
+
+@pytest.mark.asyncio
+async def test_grep_parallel_limits_context_construction_per_file(monkeypatch):
+    fs = VikingFS(agfs=_DummyAgfs())
+    lines = ["hit"] * 400
+    monkeypatch.setattr(fs, "read", AsyncMock(return_value="\n".join(lines)))
+
+    build_calls = 0
+    original_build_match = fs._build_grep_match
+
+    def count_build_calls(*args, **kwargs):
+        nonlocal build_calls
+        build_calls += 1
+        return original_build_match(*args, **kwargs)
+
+    monkeypatch.setattr(fs, "_build_grep_match", count_build_calls)
+
+    matches, files_scanned = await fs._grep_files_parallel(
+        ["viking://resources/a.md"],
+        compiled_pattern=re.compile("hit"),
+        node_limit=1,
+        before_context=400,
+        after_context=400,
+    )
+
+    assert files_scanned == 1
+    assert len(matches) == 1
+    assert build_calls == 1
+    assert matches[0]["before_context"] == []
+    assert len(matches[0]["after_context"]) == 399
 
 
 @pytest.mark.asyncio

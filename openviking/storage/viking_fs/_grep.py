@@ -729,11 +729,13 @@ class _GrepMixin:
         concurrency = _pkg()._DEFAULT_GREP_FILE_CONCURRENCY
         for start in range(0, len(file_uris), concurrency):
             batch_uris = file_uris[start : start + concurrency]
+            remaining_limit = node_limit - len(results) if node_limit else None
             batch_jobs = [
                 self._grep_single_file(
                     entry_uri,
                     compiled_pattern,
                     ctx,
+                    node_limit=remaining_limit,
                     content_transform=content_transform,
                     before_context=before_context,
                     after_context=after_context,
@@ -755,6 +757,7 @@ class _GrepMixin:
         entry_uri: str,
         compiled_pattern: re.Pattern,
         ctx: Optional[RequestContext] = None,
+        node_limit: Optional[int] = None,
         content_transform: Optional[Callable[[str, str], str]] = None,
         before_context: int = 0,
         after_context: int = 0,
@@ -779,6 +782,8 @@ class _GrepMixin:
                             after_context,
                         )
                     )
+                    if node_limit and len(matches) >= node_limit:
+                        break
             return matches, 1
         except Exception as e:
             logger.debug(f"Failed to grep {entry_uri}: {e}")
