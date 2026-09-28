@@ -585,7 +585,11 @@ describe("OpenVikingClient", () => {
       limit: 5,
       sortBy: "mtime",
       sortOrder: "desc",
+      includeAbstract: false,
+      includeOverview: true,
+      overviewLimit: 512,
     });
+    await client.list("viking://session");
     await client.tree("viking://resources/docs", {
       levelLimit: 2,
       offset: 6,
@@ -604,8 +608,15 @@ describe("OpenVikingClient", () => {
     expect(listUrl.searchParams.get("limit")).toBe("5");
     expect(listUrl.searchParams.get("sort_by")).toBe("mtime");
     expect(listUrl.searchParams.get("sort_order")).toBe("desc");
+    expect(listUrl.searchParams.get("include_abstract")).toBe("false");
+    expect(listUrl.searchParams.get("include_overview")).toBe("true");
+    expect(listUrl.searchParams.get("overview_limit")).toBe("512");
+    const defaultListUrl = new URL(String(fetcher.mock.calls[1]![0]));
+    expect(defaultListUrl.searchParams.has("include_abstract")).toBe(false);
+    expect(defaultListUrl.searchParams.has("include_overview")).toBe(false);
+    expect(defaultListUrl.searchParams.get("overview_limit")).toBe("4000");
     const treeUrls = fetcher.mock.calls
-      .slice(1)
+      .slice(2)
       .map((call) => new URL(String(call[0])));
     const treeLimits = treeUrls.map((url) =>
       url.searchParams.get("level_limit"),

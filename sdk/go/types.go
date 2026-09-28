@@ -187,18 +187,21 @@ type UpdateWatchOptions struct {
 
 // ListOptions controls List.
 type ListOptions struct {
-	Simple        bool
-	Recursive     bool
-	Output        string
-	AbsLimit      int
-	ShowAllHidden bool
-	NodeLimit     int
-	Offset        int
-	Limit         int
-	SortBy        string
-	SortOrder     string
-	Tags          []string
-	IncludeTags   bool
+	Simple          bool
+	Recursive       bool
+	Output          string
+	AbsLimit        int
+	IncludeAbstract *bool
+	IncludeOverview *bool
+	OverviewLimit   int
+	ShowAllHidden   bool
+	NodeLimit       int
+	Offset          int
+	Limit           int
+	SortBy          string
+	SortOrder       string
+	Tags            []string
+	IncludeTags     bool
 }
 
 // TreeOptions controls Tree.

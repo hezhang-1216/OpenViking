@@ -23,6 +23,10 @@ func (c *Client) List(ctx context.Context, uri string, opts *ListOptions) ([]any
 	if absLimit == 0 {
 		absLimit = 256
 	}
+	overviewLimit := opts.OverviewLimit
+	if overviewLimit == 0 {
+		overviewLimit = 4000
+	}
 	nodeLimit := opts.NodeLimit
 	if nodeLimit == 0 {
 		nodeLimit = 1000
@@ -33,6 +37,13 @@ func (c *Client) List(ctx context.Context, uri string, opts *ListOptions) ([]any
 	queryBool(query, "recursive", opts.Recursive)
 	query.Set("output", output)
 	queryInt(query, "abs_limit", absLimit)
+	if opts.IncludeAbstract != nil {
+		queryBool(query, "include_abstract", *opts.IncludeAbstract)
+	}
+	if opts.IncludeOverview != nil {
+		queryBool(query, "include_overview", *opts.IncludeOverview)
+	}
+	queryInt(query, "overview_limit", overviewLimit)
 	queryBool(query, "show_all_hidden", opts.ShowAllHidden)
 	queryInt(query, "node_limit", nodeLimit)
 	if opts.Offset != 0 {

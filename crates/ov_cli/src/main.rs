@@ -497,6 +497,37 @@ enum Commands {
             help_heading = "Advanced options"
         )]
         abs_limit: i32,
+        /// Include directory L0 abstracts (defaults to the selected output mode)
+        #[arg(
+            long = "include-abstract",
+            default_missing_value = "true",
+            num_args = 0..=1,
+            require_equals = true,
+            action = ArgAction::Set,
+            value_name = "bool",
+            help_heading = "Output options"
+        )]
+        include_abstract: Option<bool>,
+        /// Include directory L1 overviews
+        #[arg(
+            long = "include-overview",
+            default_missing_value = "true",
+            num_args = 0..=1,
+            require_equals = true,
+            action = ArgAction::Set,
+            value_name = "bool",
+            help_heading = "Output options"
+        )]
+        include_overview: Option<bool>,
+        /// Maximum overview content length
+        #[arg(
+            long = "overview-limit",
+            default_value = "4000",
+            value_parser = clap::value_parser!(i32).range(1..),
+            value_name = "n",
+            help_heading = "Advanced options"
+        )]
+        overview_limit: i32,
         /// Show all hidden files
         #[arg(short, long, help_heading = "Common options")]
         all: bool,
@@ -539,8 +570,14 @@ enum Commands {
             help_heading = "Common options"
         )]
         sort_order: Option<String>,
-        /// Comma-separated fields to display (name,uri,path,type,size,mode,mtime,locked,id,count,tags,abstract)
-        #[arg(short = 'f', long = "fields", value_delimiter = ',', value_name = "FIELDS", help_heading = "Output options")]
+        /// Comma-separated fields to display (name,uri,path,type,size,mode,mtime,locked,id,count,tags,abstract,overview)
+        #[arg(
+            short = 'f',
+            long = "fields",
+            value_delimiter = ',',
+            value_name = "FIELDS",
+            help_heading = "Output options"
+        )]
         fields: Option<Vec<String>>,
         /// Comma-separated k=v retrieval tags; all tags must match
         #[arg(long = "tags", value_delimiter = ',', value_name = "k=v", help_heading = "Common options")]
@@ -3571,6 +3608,9 @@ async fn main() {
             simple,
             recursive,
             abs_limit,
+            include_abstract,
+            include_overview,
+            overview_limit,
             all,
             node_limit,
             offset,
@@ -3585,6 +3625,9 @@ async fn main() {
                 simple,
                 recursive,
                 abs_limit,
+                include_abstract,
+                include_overview,
+                overview_limit,
                 all,
                 node_limit,
                 offset,
@@ -4272,6 +4315,10 @@ mod tests {
             "mtime",
             "--sort-order",
             "desc",
+            "--include-abstract",
+            "--include-overview=false",
+            "--overview-limit",
+            "512",
         ])
         .expect("paged ls should parse");
         let paged_tree = Cli::try_parse_from([
@@ -4298,6 +4345,9 @@ mod tests {
                 sort_by,
                 sort_order,
                 node_limit,
+                include_abstract,
+                include_overview,
+                overview_limit,
                 ..
             } => {
                 assert_eq!(offset, 4);
@@ -4305,6 +4355,9 @@ mod tests {
                 assert_eq!(sort_by.as_deref(), Some("mtime"));
                 assert_eq!(sort_order.as_deref(), Some("desc"));
                 assert_eq!(node_limit, 256);
+                assert_eq!(include_abstract, Some(true));
+                assert_eq!(include_overview, Some(false));
+                assert_eq!(overview_limit, 512);
             }
             _ => panic!("expected ls command"),
         }

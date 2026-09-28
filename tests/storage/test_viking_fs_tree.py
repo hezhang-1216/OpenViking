@@ -763,13 +763,14 @@ async def test_ls_agent_modtime_is_raw_utc_iso(monkeypatch, fs):
 
     fs.acl_manager = SimpleNamespace(is_enabled=acl_enabled)
 
-    async def fake_can_access_many(uris, _ctx):
+    async def fake_can_access_many(uris, _ctx, **_kwargs):
         return {uri: not uri.endswith("/restricted") for uri in uris}
 
     monkeypatch.setattr(fs, "_can_access_many", fake_can_access_many)
 
-    result = await fs._ls_agent(
+    result = await fs.ls(
         "viking://resources",
+        output="agent",
         abs_limit=256,
         show_all_hidden=False,
         ctx=_default_ctx(),
@@ -791,6 +792,64 @@ async def test_ls_agent_modtime_is_raw_utc_iso(monkeypatch, fs):
         "a.md",
         "b.md",
     ]
+
+
+@pytest.mark.asyncio
+async def test_ls_explicit_summary_controls_override_output_defaults(monkeypatch, fs):
+    async def fake_ls_entries(_path, **_kwargs):
+        return [
+            {
+                "name": "a.md",
+                "size": 100,
+                "mode": 0o644,
+                "modTime": "2026-01-01T00:00:00Z",
+                "isDir": False,
+            },
+            {
+                "name": "docs",
+                "size": 4096,
+                "mode": 0o755,
+                "modTime": "2026-01-01T00:00:00Z",
+                "isDir": True,
+            },
+        ]
+
+    monkeypatch.setattr(fs, "_uri_to_path", lambda _uri, **_kwargs: "/local/test_account/resources")
+    monkeypatch.setattr(fs, "_ls_entries", fake_ls_entries)
+    monkeypatch.setattr(fs, "_path_to_uri", _std_path_to_uri)
+    monkeypatch.setattr(fs, "_is_accessible", lambda _uri, _ctx: True)
+    abstract = AsyncMock(return_value="L0 summary")
+    overview = AsyncMock(return_value="L1 overview")
+    monkeypatch.setattr(fs, "_read_abstract_for_known_dir", abstract)
+    monkeypatch.setattr(fs, "overview", overview)
+
+    original = await fs.ls(
+        "viking://resources",
+        output="original",
+        include_abstract=True,
+        include_overview=True,
+        ctx=_default_ctx(),
+    )
+
+    assert [entry["abstract"] for entry in original] == ["", "L0 summary"]
+    assert [entry["overview"] for entry in original] == ["", "L1 overview"]
+    abstract.assert_awaited_once_with("viking://resources/docs", ctx=_default_ctx())
+    overview.assert_awaited_once_with("viking://resources/docs", ctx=_default_ctx())
+    abstract.reset_mock()
+    overview.reset_mock()
+
+    agent = await fs.ls(
+        "viking://resources",
+        output="agent",
+        include_abstract=False,
+        include_overview=True,
+        ctx=_default_ctx(),
+    )
+
+    assert all("abstract" not in entry for entry in agent)
+    assert [entry["overview"] for entry in agent] == ["", "L1 overview"]
+    abstract.assert_not_awaited()
+    overview.assert_awaited_once_with("viking://resources/docs", ctx=_default_ctx())
 
 
 @pytest.mark.asyncio

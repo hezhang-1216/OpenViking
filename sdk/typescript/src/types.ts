@@ -218,6 +218,9 @@ export interface ListOptions {
   recursive?: boolean;
   output?: string;
   absLimit?: number;
+  includeAbstract?: boolean;
+  includeOverview?: boolean;
+  overviewLimit?: number;
   showAllHidden?: boolean;
   nodeLimit?: number;
   offset?: number;

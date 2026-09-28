@@ -233,28 +233,54 @@ func TestFindUsesDefaultLimitAndPreservesEmptyValues(t *testing.T) {
 }
 
 func TestListAndTreeSendQueryOptions(t *testing.T) {
+	listCalls := 0
 	treeCalls := 0
 	client, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/fs/ls":
-			if got := r.URL.Query().Get("node_limit"); got != "200" {
-				t.Fatalf("node_limit = %q", got)
+			if listCalls == 0 {
+				if got := r.URL.Query().Get("node_limit"); got != "200" {
+					t.Fatalf("node_limit = %q", got)
+				}
+				if got := r.URL.Query().Get("offset"); got != "4" {
+					t.Fatalf("offset = %q", got)
+				}
+				if got := r.URL.Query().Get("limit"); got != "5" {
+					t.Fatalf("limit = %q", got)
+				}
+				if got := r.URL.Query().Get("sort_by"); got != "mtime" {
+					t.Fatalf("sort_by = %q", got)
+				}
+				if got := r.URL.Query().Get("sort_order"); got != "desc" {
+					t.Fatalf("sort_order = %q", got)
+				}
+				if got := r.URL.Query()["tags"]; !reflect.DeepEqual(got, []string{"env=prod", "team=search"}) {
+					t.Fatalf("tags = %#v", got)
+				}
+				if got := r.URL.Query().Get("include_abstract"); got != "false" {
+					t.Fatalf("include_abstract = %q", got)
+				}
+				if got := r.URL.Query().Get("include_overview"); got != "true" {
+					t.Fatalf("include_overview = %q", got)
+				}
+				if got := r.URL.Query().Get("overview_limit"); got != "512" {
+					t.Fatalf("overview_limit = %q", got)
+				}
+				if got := r.URL.Query().Get("abs_limit"); got != "128" {
+					t.Fatalf("abs_limit = %q", got)
+				}
+			} else {
+				if _, ok := r.URL.Query()["include_abstract"]; ok {
+					t.Fatal("default list request should omit include_abstract")
+				}
+				if _, ok := r.URL.Query()["include_overview"]; ok {
+					t.Fatal("default list request should omit include_overview")
+				}
+				if got := r.URL.Query().Get("overview_limit"); got != "4000" {
+					t.Fatalf("overview_limit = %q", got)
+				}
 			}
-			if got := r.URL.Query().Get("offset"); got != "4" {
-				t.Fatalf("offset = %q", got)
-			}
-			if got := r.URL.Query().Get("limit"); got != "5" {
-				t.Fatalf("limit = %q", got)
-			}
-			if got := r.URL.Query().Get("sort_by"); got != "mtime" {
-				t.Fatalf("sort_by = %q", got)
-			}
-			if got := r.URL.Query().Get("sort_order"); got != "desc" {
-				t.Fatalf("sort_order = %q", got)
-			}
-			if got := r.URL.Query()["tags"]; !reflect.DeepEqual(got, []string{"env=prod", "team=search"}) {
-				t.Fatalf("tags = %#v", got)
-			}
+			listCalls++
 		case "/api/v1/fs/tree":
 			if treeCalls == 0 {
 				if got := r.URL.Query().Get("level_limit"); got != "0" {
@@ -310,13 +336,20 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 	defer closeServer()
 
 	if _, err := client.List(context.Background(), "viking://session", &ListOptions{
-		NodeLimit: 200,
-		Offset:    4,
-		Limit:     5,
-		SortBy:    "mtime",
-		SortOrder: "desc",
-		Tags:      []string{"env=prod", "team=search"},
+		NodeLimit:       200,
+		Offset:          4,
+		Limit:           5,
+		SortBy:          "mtime",
+		SortOrder:       "desc",
+		Tags:            []string{"env=prod", "team=search"},
+		AbsLimit:        128,
+		IncludeAbstract: Bool(false),
+		IncludeOverview: Bool(true),
+		OverviewLimit:   512,
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.List(context.Background(), "viking://session", nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.Tree(context.Background(), "viking://resources/docs", &TreeOptions{

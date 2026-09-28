@@ -1650,6 +1650,9 @@ pub async fn handle_ls(
     simple: bool,
     recursive: bool,
     abs_limit: i32,
+    include_abstract: Option<bool>,
+    include_overview: Option<bool>,
+    overview_limit: i32,
     show_all_hidden: bool,
     node_limit: i32,
     offset: i32,
@@ -1670,6 +1673,15 @@ pub async fn handle_ls(
     }
     if recursive {
         params.push("-r".to_string());
+    }
+    if let Some(value) = include_abstract {
+        params.push(format!("--include-abstract={value}"));
+    }
+    if let Some(value) = include_overview {
+        params.push(format!("--include-overview={value}"));
+    }
+    if include_overview == Some(true) {
+        params.push(format!("--overview-limit {overview_limit}"));
     }
     if show_all_hidden {
         params.push("-a".to_string());
@@ -1700,6 +1712,18 @@ pub async fn handle_ls(
     } else {
         "agent"
     };
+    let include_abstract = include_abstract.or_else(|| {
+        fields
+            .as_ref()
+            .is_some_and(|items| items.iter().any(|item| item == "abstract"))
+            .then_some(true)
+    });
+    let include_overview = include_overview.or_else(|| {
+        fields
+            .as_ref()
+            .is_some_and(|items| items.iter().any(|item| item == "overview"))
+            .then_some(true)
+    });
     commands::filesystem::ls(
         &client,
         &uri,
@@ -1707,6 +1731,9 @@ pub async fn handle_ls(
         recursive,
         api_output,
         abs_limit,
+        include_abstract,
+        include_overview,
+        overview_limit,
         show_all_hidden,
         node_limit,
         offset,

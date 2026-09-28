@@ -20,7 +20,10 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 | simple | bool | 否 | False | 仅返回相对路径 |
 | recursive | bool | 否 | False | 递归列出所有子目录 |
 | output | str | 否 | HTTP：`agent`；SDK：`original` | 输出格式：`agent` 或 `original` |
-| abs_limit | int | 否 | 256 | `agent` 输出中的摘要长度限制 |
+| abs_limit | int | 否 | 256 | 返回的摘要最大长度 |
+| include_abstract | bool | 否 | 未设置 | 是否返回目录 L0 摘要。未设置时沿用旧 `output` 语义（`agent` 返回，`original` 不返回） |
+| include_overview | bool | 否 | 未设置 | 是否返回目录 L1 概览。未设置时不返回 |
+| overview_limit | int | 否 | 4000 | 返回的概览最大长度 |
 | show_all_hidden | bool | 否 | False | 像 `-a` 一样包含隐藏文件 |
 | node_limit | int | 否 | 1000 | 最大返回节点数 |
 | offset | int | 否 | 0 | 跳过的可见节点数 |
@@ -30,7 +33,7 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 | extra_fields | list[str] | 否 | None | 额外返回的字段：`locked`、`id`、`count` |
 | tags | string[] | 否 | 未设置 | 仅返回同时匹配全部 `k=v` 检索标签的条目 |
 
-`tags` 使用 AND 语义，并在 `offset` 和 `limit` 前应用。带 tags 过滤的响应会返回 `tags`；未过滤时需传 `include_tags=true`（CLI：`-f tags`）才返回它们。HTTP 的 `simple=true` 保持仅返回路径；CLI 同时指定 `--simple` 和 `--fields` 时会获取条目对象，再按指定列输出。
+`tags` 使用 AND 语义，并在 `offset` 和 `limit` 前应用。L0/L1 内容只附加到分页选中的目录节点，不占用 `node_limit`。显式传入 `include_abstract=true|false` 会覆盖 `output` 隐含的旧行为。带 tags 过滤的响应会返回 `tags`；未过滤时需传 `include_tags=true`（CLI：`-f tags`）才返回它们。HTTP 的 `simple=true` 保持仅返回路径；CLI 同时指定 `--simple` 和 `--fields` 时会获取条目对象，再按指定列输出。
 
 **条目结构**
 
@@ -86,6 +89,8 @@ for entry in entries:
 ```typescript
 const entries = await client.list("viking://resources/docs/", {
   tags: ["team=search", "env=prod"],
+  includeAbstract: true,
+  includeOverview: true,
 });
 console.log(entries);
 ```
@@ -94,7 +99,11 @@ console.log(entries);
 
 ```go
 entries, err := client.List(ctx, "viking://resources/", &openviking.ListOptions{
-    Tags: []string{"team=search", "env=prod"},
+    Tags:            []string{"team=search", "env=prod"},
+    IncludeAbstract: openviking.Bool(true),
+    AbsLimit:        512,
+    IncludeOverview: openviking.Bool(true),
+    OverviewLimit:   4000,
 })
 if err != nil {
     return err
@@ -140,7 +149,7 @@ curl -G "http://localhost:1933/api/v1/fs/ls" \
 **CLI**
 
 ```bash
-openviking ls viking://resources/ [--simple] [--recursive] [--tags team=search,env=prod] [-f FIELDS]
+openviking ls viking://resources/ [--simple] [--recursive] [--include-abstract[=true|false]] [--include-overview[=true|false]] [--tags team=search,env=prod] [-f FIELDS]
 openviking tree viking://resources/my-project/ [--simple] [--tags team=search,env=prod] [-f FIELDS]
 openviking glob "**/*.md" [--uri viking://resources/] [--simple] [--tags team=search,env=prod] [-f FIELDS]
 
@@ -151,7 +160,7 @@ openviking ls viking://resources/ --fields name,tags
 openviking ls viking://resources/ --simple --fields uri,tags
 ```
 
-`-f` / `--fields` 接受逗号分隔的列名。在默认的 table 输出模式下，结果为带表头、按列对齐的表格。支持的字段为 `name`、`uri`、`path`、`type`、`size`、`mode`、`mtime`、`locked`、`id`、`count`、`abstract`、`tags`。同时指定 `--simple` 和 `-f` 时，每行输出逗号分隔的字段值，不带表头或树缩进；仅使用 `--simple` 时仍每行输出一个 URI。若未选择 `name`、`uri` 或 `path`，列表会自动补充 `name` 列，树会补充 `path` 列。
+`-f` / `--fields` 接受逗号分隔的列名。在默认的 table 输出模式下，结果为带表头、按列对齐的表格。支持的字段为 `name`、`uri`、`path`、`type`、`size`、`mode`、`mtime`、`locked`、`id`、`count`、`abstract`、`overview`、`tags`。同时指定 `--simple` 和 `-f` 时，每行输出逗号分隔的字段值，不带表头或树缩进；仅使用 `--simple` 时仍每行输出一个 URI。若未选择 `name`、`uri` 或 `path`，列表会自动补充 `name` 列，树会补充 `path` 列。
 
 CLI 会按所选列请求 `extra_fields`（`locked`、`id`、`count`）；选择 `tags` 列时会请求 `include_tags=true`。这些列选择不改变 `tags` 的 AND 过滤语义。
 
