@@ -54,6 +54,18 @@ func writeOK(t *testing.T, w http.ResponseWriter, result any) {
 	}
 }
 
+func writeOKWithHasMore(t *testing.T, w http.ResponseWriter, result any, hasMore bool) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"status":   "ok",
+		"result":   result,
+		"has_more": hasMore,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func writeAPIError(t *testing.T, w http.ResponseWriter, status int, code string, details map[string]any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
@@ -367,6 +379,49 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 	}
 	if _, err := client.Tree(context.Background(), "viking://resources/docs", nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestListPageAndTreePageReturnHasMore(t *testing.T) {
+	requests := 0
+	client, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch r.URL.Path {
+		case "/api/v1/fs/ls":
+			writeOKWithHasMore(t, w, []any{map[string]any{"name": "docs"}}, true)
+		case "/api/v1/fs/tree":
+			writeOKWithHasMore(t, w, []any{map[string]any{"name": "docs"}}, false)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer closeServer()
+
+	listPage, err := client.ListPage(context.Background(), "viking://resources", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !listPage.HasMore || len(listPage.Result) != 1 {
+		t.Fatalf("list page = %#v", listPage)
+	}
+
+	treePage, err := client.TreePage(context.Background(), "viking://resources", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if treePage.HasMore || len(treePage.Result) != 1 {
+		t.Fatalf("tree page = %#v", treePage)
+	}
+
+	entries, err := client.List(context.Background(), "viking://resources", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("list entries = %#v", entries)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
 	}
 }
 

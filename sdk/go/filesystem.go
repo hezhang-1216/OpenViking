@@ -12,6 +12,15 @@ import (
 
 // List lists directory contents.
 func (c *Client) List(ctx context.Context, uri string, opts *ListOptions) ([]any, error) {
+	page, err := c.ListPage(ctx, uri, opts)
+	if err != nil {
+		return nil, err
+	}
+	return page.Result, nil
+}
+
+// ListPage lists directory contents with pagination metadata.
+func (c *Client) ListPage(ctx context.Context, uri string, opts *ListOptions) (*ListPage, error) {
 	if opts == nil {
 		opts = &ListOptions{Output: "original", AbsLimit: 256, NodeLimit: 1000}
 	}
@@ -65,12 +74,24 @@ func (c *Client) List(ctx context.Context, uri string, opts *ListOptions) ([]any
 		query.Set("sort_order", opts.SortOrder)
 	}
 	var result []any
-	err := c.doJSON(ctx, http.MethodGet, "/api/v1/fs/ls", query, nil, &result)
-	return result, err
+	env, err := c.doJSONEnvelope(ctx, http.MethodGet, "/api/v1/fs/ls", query, nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return &ListPage{Result: result, HasMore: env.HasMore}, nil
 }
 
 // Tree returns a directory tree.
 func (c *Client) Tree(ctx context.Context, uri string, opts *TreeOptions) ([]map[string]any, error) {
+	page, err := c.TreePage(ctx, uri, opts)
+	if err != nil {
+		return nil, err
+	}
+	return page.Result, nil
+}
+
+// TreePage returns a directory tree with pagination metadata.
+func (c *Client) TreePage(ctx context.Context, uri string, opts *TreeOptions) (*TreePage, error) {
 	if opts == nil {
 		opts = &TreeOptions{Output: "original", AbsLimit: 128, NodeLimit: 1000}
 	}
@@ -124,8 +145,11 @@ func (c *Client) Tree(ctx context.Context, uri string, opts *TreeOptions) ([]map
 		query.Set("include_tags", "true")
 	}
 	var result []map[string]any
-	err := c.doJSON(ctx, http.MethodGet, "/api/v1/fs/tree", query, nil, &result)
-	return result, err
+	env, err := c.doJSONEnvelope(ctx, http.MethodGet, "/api/v1/fs/tree", query, nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return &TreePage{Result: result, HasMore: env.HasMore}, nil
 }
 
 // Stat returns metadata for a URI.

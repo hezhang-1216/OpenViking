@@ -98,7 +98,7 @@ console.log(entries);
 **Go SDK**
 
 ```go
-entries, err := client.List(ctx, "viking://resources/", &openviking.ListOptions{
+page, err := client.ListPage(ctx, "viking://resources/", &openviking.ListOptions{
     IncludeAbstract: openviking.Bool(true),
     AbsLimit:        512,
     IncludeOverview: openviking.Bool(true),
@@ -107,10 +107,14 @@ entries, err := client.List(ctx, "viking://resources/", &openviking.ListOptions{
 if err != nil {
     return err
 }
-for _, entry := range entries {
+for _, entry := range page.Result {
     fmt.Println(entry)
 }
+fmt.Println("has more nodes:", page.HasMore)
 ```
+
+Use the compatibility method `List` when only the entry array is needed. Use
+`ListPage` to detect whether `limit` or `node_limit` truncated the result.
 
 **HTTP API**
 
@@ -211,7 +215,7 @@ console.log(tree);
 **Go SDK**
 
 ```go
-entries, err := client.Tree(ctx, "viking://resources/", &openviking.TreeOptions{
+page, err := client.TreePage(ctx, "viking://resources/", &openviking.TreeOptions{
     DirectoriesOnly: true,
     IncludeAbstract: openviking.Bool(true),
     IncludeOverview: openviking.Bool(true),
@@ -219,10 +223,14 @@ entries, err := client.Tree(ctx, "viking://resources/", &openviking.TreeOptions{
 if err != nil {
     return err
 }
-for _, entry := range entries {
+for _, entry := range page.Result {
     fmt.Println(entry["rel_path"], entry["isDir"])
 }
+fmt.Println("has more nodes:", page.HasMore)
 ```
+
+Use the compatibility method `Tree` when only the node array is needed. Use
+`TreePage` to detect whether `limit` or `node_limit` truncated the result.
 
 **HTTP API**
 

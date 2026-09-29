@@ -98,7 +98,7 @@ console.log(entries);
 **Go SDK**
 
 ```go
-entries, err := client.List(ctx, "viking://resources/", &openviking.ListOptions{
+page, err := client.ListPage(ctx, "viking://resources/", &openviking.ListOptions{
     Tags:            []string{"team=search", "env=prod"},
     IncludeAbstract: openviking.Bool(true),
     AbsLimit:        512,
@@ -108,10 +108,13 @@ entries, err := client.List(ctx, "viking://resources/", &openviking.ListOptions{
 if err != nil {
     return err
 }
-for _, entry := range entries {
+for _, entry := range page.Result {
     fmt.Println(entry)
 }
+fmt.Println("是否还有更多节点：", page.HasMore)
 ```
+
+仅需要节点数组时可继续使用兼容接口 `List`；需要判断结果是否因 `limit` 或 `node_limit` 被截断时，应使用 `ListPage`。
 
 **HTTP API**
 
@@ -242,7 +245,7 @@ console.log(tree);
 **Go SDK**
 
 ```go
-entries, err := client.Tree(ctx, "viking://resources/", &openviking.TreeOptions{
+page, err := client.TreePage(ctx, "viking://resources/", &openviking.TreeOptions{
     Tags:            []string{"team=search", "env=prod"},
     DirectoriesOnly: true,
     IncludeAbstract: openviking.Bool(true),
@@ -251,10 +254,13 @@ entries, err := client.Tree(ctx, "viking://resources/", &openviking.TreeOptions{
 if err != nil {
     return err
 }
-for _, entry := range entries {
+for _, entry := range page.Result {
     fmt.Println(entry["rel_path"], entry["isDir"])
 }
+fmt.Println("是否还有更多节点：", page.HasMore)
 ```
+
+仅需要节点数组时可继续使用兼容接口 `Tree`；需要判断结果是否因 `limit` 或 `node_limit` 被截断时，应使用 `TreePage`。
 
 **HTTP API**
 

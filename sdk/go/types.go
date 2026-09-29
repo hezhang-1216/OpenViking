@@ -204,6 +204,12 @@ type ListOptions struct {
 	IncludeTags     bool
 }
 
+// ListPage contains a page of directory entries and pagination metadata.
+type ListPage struct {
+	Result  []any
+	HasMore bool
+}
+
 // TreeOptions controls Tree.
 type TreeOptions struct {
 	Output          string
@@ -219,6 +225,12 @@ type TreeOptions struct {
 	Limit           int
 	Tags            []string
 	IncludeTags     bool
+}
+
+// TreePage contains a page of tree nodes and pagination metadata.
+type TreePage struct {
+	Result  []map[string]any
+	HasMore bool
 }
 
 // RemoveOptions controls Remove.
