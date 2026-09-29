@@ -570,16 +570,26 @@ describe("OpenVikingClient", () => {
     );
   });
 
-  it("passes directory list ordering and tree depth to the server", async () => {
+  it("preserves listing options, pagination metadata, and legacy results", async () => {
+    const entries = [{ name: "docs" }];
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => ok([]));
+      .mockImplementation(async () => ok(entries))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: "ok",
+            result: entries,
+            has_more: true,
+          }),
+        ),
+      );
     const client = new OpenVikingClient({
       baseUrl: "https://example.com",
       fetch: fetcher,
     });
 
-    await client.list("viking://session", {
+    const listPage = await client.listPage("viking://session", {
       nodeLimit: 200,
       offset: 4,
       limit: 5,
@@ -590,8 +600,9 @@ describe("OpenVikingClient", () => {
       overviewLimit: 512,
       extraFields: ["locked", "id"],
     });
-    await client.list("viking://session");
-    await client.tree("viking://resources/docs", {
+    expect(listPage).toEqual({ result: entries, hasMore: true });
+    await expect(client.list("viking://session")).resolves.toEqual(entries);
+    const treePage = await client.treePage("viking://resources/docs", {
       levelLimit: 2,
       offset: 6,
       limit: 7,
@@ -601,7 +612,10 @@ describe("OpenVikingClient", () => {
       overviewLimit: 512,
       extraFields: ["count"],
     });
-    await client.tree("viking://resources/docs", { levelLimit: 0 });
+    expect(treePage).toEqual({ result: entries, hasMore: false });
+    await expect(
+      client.tree("viking://resources/docs", { levelLimit: 0 }),
+    ).resolves.toEqual(entries);
     await client.tree("viking://resources/docs");
 
     const listUrl = new URL(String(fetcher.mock.calls[0]![0]));
@@ -642,49 +656,6 @@ describe("OpenVikingClient", () => {
     expect(treeUrls[1]!.searchParams.has("limit")).toBe(false);
     expect(treeUrls[2]!.searchParams.has("offset")).toBe(false);
     expect(treeUrls[2]!.searchParams.has("limit")).toBe(false);
-  });
-
-  it("returns pagination metadata without changing list and tree results", async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            status: "ok",
-            result: [{ name: "docs" }],
-            has_more: true,
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            status: "ok",
-            result: [{ name: "docs" }],
-            has_more: false,
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(ok([{ name: "docs" }]));
-    const client = new OpenVikingClient({
-      baseUrl: "https://example.com",
-      fetch: fetcher,
-    });
-
-    await expect(client.listPage("viking://resources")).resolves.toEqual({
-      result: [{ name: "docs" }],
-      hasMore: true,
-    });
-    await expect(client.treePage("viking://resources")).resolves.toEqual({
-      result: [{ name: "docs" }],
-      hasMore: false,
-    });
-    await expect(client.list("viking://resources")).resolves.toEqual([
-      { name: "docs" },
-    ]);
-    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it("sends addResource tags and tagMode to the server", async () => {

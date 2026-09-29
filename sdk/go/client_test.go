@@ -54,18 +54,6 @@ func writeOK(t *testing.T, w http.ResponseWriter, result any) {
 	}
 }
 
-func writeOKWithHasMore(t *testing.T, w http.ResponseWriter, result any, hasMore bool) {
-	t.Helper()
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{
-		"status":   "ok",
-		"result":   result,
-		"has_more": hasMore,
-	}); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func writeAPIError(t *testing.T, w http.ResponseWriter, status int, code string, details map[string]any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
@@ -244,7 +232,8 @@ func TestFindUsesDefaultLimitAndPreservesEmptyValues(t *testing.T) {
 	}
 }
 
-func TestListAndTreeSendQueryOptions(t *testing.T) {
+func TestListAndTreePreserveOptionsAndPagination(t *testing.T) {
+	entries := []any{map[string]any{"name": "docs"}}
 	listCalls := 0
 	treeCalls := 0
 	client, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -349,11 +338,16 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		writeOK(t, w, []any{})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"status": "ok", "result": entries, "has_more": r.URL.Path == "/api/v1/fs/ls",
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}))
 	defer closeServer()
 
-	if _, err := client.List(context.Background(), "viking://session", &ListOptions{
+	listPage, err := client.ListPage(context.Background(), "viking://session", &ListOptions{
 		NodeLimit:       200,
 		Offset:          4,
 		Limit:           5,
@@ -365,13 +359,18 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 		IncludeAbstract: Bool(false),
 		IncludeOverview: Bool(true),
 		OverviewLimit:   512,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.List(context.Background(), "viking://session", nil); err != nil {
-		t.Fatal(err)
+	if !listPage.HasMore || !reflect.DeepEqual(listPage.Result, entries) {
+		t.Fatalf("list page = %#v", listPage)
 	}
-	if _, err := client.Tree(context.Background(), "viking://resources/docs", &TreeOptions{
+	legacyList, err := client.List(context.Background(), "viking://session", nil)
+	if err != nil || !reflect.DeepEqual(legacyList, entries) {
+		t.Fatalf("list = %#v, err = %v", legacyList, err)
+	}
+	treePage, err := client.TreePage(context.Background(), "viking://resources/docs", &TreeOptions{
 		NodeLimit:       200,
 		LevelLimit:      Int(0),
 		Offset:          6,
@@ -382,54 +381,16 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 		IncludeOverview: Bool(true),
 		OverviewLimit:   512,
 		DirectoriesOnly: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := client.Tree(context.Background(), "viking://resources/docs", nil); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestListPageAndTreePageReturnHasMore(t *testing.T) {
-	requests := 0
-	client, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		switch r.URL.Path {
-		case "/api/v1/fs/ls":
-			writeOKWithHasMore(t, w, []any{map[string]any{"name": "docs"}}, true)
-		case "/api/v1/fs/tree":
-			writeOKWithHasMore(t, w, []any{map[string]any{"name": "docs"}}, false)
-		default:
-			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer closeServer()
-
-	listPage, err := client.ListPage(context.Background(), "viking://resources", nil)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !listPage.HasMore || len(listPage.Result) != 1 {
-		t.Fatalf("list page = %#v", listPage)
-	}
-
-	treePage, err := client.TreePage(context.Background(), "viking://resources", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if treePage.HasMore || len(treePage.Result) != 1 {
+	if treePage.HasMore || !reflect.DeepEqual(treePage.Result, []map[string]any{{"name": "docs"}}) {
 		t.Fatalf("tree page = %#v", treePage)
 	}
-
-	entries, err := client.List(context.Background(), "viking://resources", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("list entries = %#v", entries)
-	}
-	if requests != 3 {
-		t.Fatalf("requests = %d, want 3", requests)
+	legacyTree, err := client.Tree(context.Background(), "viking://resources/docs", nil)
+	if err != nil || !reflect.DeepEqual(legacyTree, treePage.Result) {
+		t.Fatalf("tree = %#v, err = %v", legacyTree, err)
 	}
 }
 
