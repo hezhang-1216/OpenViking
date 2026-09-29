@@ -73,6 +73,9 @@ func (c *Client) ListPage(ctx context.Context, uri string, opts *ListOptions) (*
 	if opts.SortOrder != "" {
 		query.Set("sort_order", opts.SortOrder)
 	}
+	if opts.ExtraFields != nil {
+		query["extra_fields"] = opts.ExtraFields
+	}
 	var result []any
 	env, err := c.doJSONEnvelope(ctx, http.MethodGet, "/api/v1/fs/ls", query, nil, &result)
 	if err != nil {
@@ -137,6 +140,9 @@ func (c *Client) TreePage(ctx context.Context, uri string, opts *TreeOptions) (*
 	}
 	if opts.Limit != 0 {
 		queryInt(query, "limit", opts.Limit)
+	}
+	if opts.ExtraFields != nil {
+		query["extra_fields"] = opts.ExtraFields
 	}
 	if opts.Tags != nil {
 		query["tags"] = opts.Tags

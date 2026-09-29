@@ -73,26 +73,30 @@ existing hiding rules.
 **Python HTTP SDK**
 
 ```python
-entries = client.ls(
+page = client.ls_page(
     uri="viking://resources/",
     offset=100,
     limit=100,
     sort_by="mtime",
     sort_order="desc",
+    include_abstract=True,
+    include_overview=True,
 )
-for entry in entries:
+for entry in page["result"]:
     type_str = "dir" if entry['isDir'] else "file"
     print(f"{entry['name']} - {type_str}")
+print("has more nodes:", page["has_more"])
 ```
 
 **TypeScript SDK**
 
 ```typescript
-const entries = await client.list("viking://resources/docs/", {
+const page = await client.listPage("viking://resources/docs/", {
   includeAbstract: true,
   includeOverview: true,
 });
-console.log(entries);
+console.log(page.result);
+console.log("has more nodes:", page.hasMore);
 ```
 
 **Go SDK**
@@ -113,8 +117,10 @@ for _, entry := range page.Result {
 fmt.Println("has more nodes:", page.HasMore)
 ```
 
-Use the compatibility method `List` when only the entry array is needed. Use
-`ListPage` to detect whether `limit` or `node_limit` truncated the result.
+When only the entry array is needed, use the compatibility methods `ls` in
+Python, `list` in TypeScript, and `List` in Go. To detect whether `limit` or
+`node_limit` truncated the result, use `ls_page`, `listPage`, and `ListPage`,
+respectively.
 
 **HTTP API**
 
@@ -199,17 +205,30 @@ Directory filtering and `tags` are applied before `offset` and `limit`. Abstract
 **Python HTTP SDK**
 
 ```python
-entries = client.tree(uri="viking://resources/", offset=100, limit=100)
-for entry in entries:
+page = client.tree_page(
+    uri="viking://resources/",
+    offset=100,
+    limit=100,
+    include_abstract=True,
+    include_overview=True,
+    directories_only=True,
+)
+for entry in page["result"]:
     type_str = "dir" if entry['isDir'] else "file"
     print(f"{entry['rel_path']} - {type_str}")
+print("has more nodes:", page["has_more"])
 ```
 
 **TypeScript SDK**
 
 ```typescript
-const tree = await client.tree("viking://resources/docs/", { nodeLimit: 100 });
-console.log(tree);
+const page = await client.treePage("viking://resources/docs/", {
+  nodeLimit: 100,
+  includeAbstract: true,
+  includeOverview: true,
+});
+console.log(page.result);
+console.log("has more nodes:", page.hasMore);
 ```
 
 **Go SDK**
@@ -229,8 +248,10 @@ for _, entry := range page.Result {
 fmt.Println("has more nodes:", page.HasMore)
 ```
 
-Use the compatibility method `Tree` when only the node array is needed. Use
-`TreePage` to detect whether `limit` or `node_limit` truncated the result.
+When only the node array is needed, use the compatibility method `tree` in
+Python and TypeScript or `Tree` in Go. To detect whether `limit` or
+`node_limit` truncated the result, use `tree_page`, `treePage`, and `TreePage`,
+respectively.
 
 **HTTP API**
 

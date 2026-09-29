@@ -71,28 +71,32 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 **Python HTTP SDK**
 
 ```python
-entries = client.ls(
+page = client.ls_page(
     uri="viking://resources/",
     offset=100,
     limit=100,
     sort_by="mtime",
     sort_order="desc",
     tags=["team=search", "env=prod"],
+    include_abstract=True,
+    include_overview=True,
 )
-for entry in entries:
+for entry in page["result"]:
     type_str = "dir" if entry['isDir'] else "file"
     print(f"{entry['name']} - {type_str}")
+print("是否还有更多节点：", page["has_more"])
 ```
 
 **TypeScript SDK**
 
 ```typescript
-const entries = await client.list("viking://resources/docs/", {
+const page = await client.listPage("viking://resources/docs/", {
   tags: ["team=search", "env=prod"],
   includeAbstract: true,
   includeOverview: true,
 });
-console.log(entries);
+console.log(page.result);
+console.log("是否还有更多节点：", page.hasMore);
 ```
 
 **Go SDK**
@@ -114,7 +118,7 @@ for _, entry := range page.Result {
 fmt.Println("是否还有更多节点：", page.HasMore)
 ```
 
-仅需要节点数组时可继续使用兼容接口 `List`；需要判断结果是否因 `limit` 或 `node_limit` 被截断时，应使用 `ListPage`。
+仅需要节点数组时可继续使用兼容接口：Python 使用 `ls`、TypeScript 使用 `list`、Go 使用 `List`。需要判断结果是否因 `limit` 或 `node_limit` 被截断时，分别使用 `ls_page`、`listPage`、`ListPage`。
 
 **HTTP API**
 
@@ -221,25 +225,32 @@ HTTP 响应中的 `result` 保持为条目数组。`has_more=true` 表示在应�
 **Python HTTP SDK**
 
 ```python
-entries = client.tree(
+page = client.tree_page(
     uri="viking://resources/",
     offset=100,
     limit=100,
     tags=["team=search", "env=prod"],
+    include_abstract=True,
+    include_overview=True,
+    directories_only=True,
 )
-for entry in entries:
+for entry in page["result"]:
     type_str = "dir" if entry['isDir'] else "file"
     print(f"{entry['rel_path']} - {type_str}")
+print("是否还有更多节点：", page["has_more"])
 ```
 
 **TypeScript SDK**
 
 ```typescript
-const tree = await client.tree("viking://resources/docs/", {
+const page = await client.treePage("viking://resources/docs/", {
   nodeLimit: 100,
   tags: ["team=search", "env=prod"],
+  includeAbstract: true,
+  includeOverview: true,
 });
-console.log(tree);
+console.log(page.result);
+console.log("是否还有更多节点：", page.hasMore);
 ```
 
 **Go SDK**
@@ -260,7 +271,7 @@ for _, entry := range page.Result {
 fmt.Println("是否还有更多节点：", page.HasMore)
 ```
 
-仅需要节点数组时可继续使用兼容接口 `Tree`；需要判断结果是否因 `limit` 或 `node_limit` 被截断时，应使用 `TreePage`。
+仅需要节点数组时可继续使用兼容接口：Python/TypeScript 使用 `tree`、Go 使用 `Tree`。需要判断结果是否因 `limit` 或 `node_limit` 被截断时，分别使用 `tree_page`、`treePage`、`TreePage`。
 
 **HTTP API**
 

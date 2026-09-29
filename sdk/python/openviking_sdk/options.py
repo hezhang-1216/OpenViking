@@ -116,6 +116,16 @@ class ReindexOptions(_ExtraOptions, total=False):
     tag_mode: Literal["replace", "append", "clear"]
 
 
+class ListPage(TypedDict):
+    result: List[Any]
+    has_more: bool
+
+
+class TreePage(TypedDict):
+    result: List[Dict[str, Any]]
+    has_more: bool
+
+
 class CreateSessionOptions(_ExtraOptions, total=False):
     memory_policy: Dict[str, Any]
     auto_commit_policy: Optional[Dict[str, Any]]

@@ -227,6 +227,7 @@ export interface ListOptions {
   limit?: number;
   sortBy?: "name" | "mtime";
   sortOrder?: "asc" | "desc";
+  extraFields?: Array<"locked" | "id" | "count">;
   tags?: string[];
   includeTags?: boolean;
 }
@@ -243,8 +244,19 @@ export interface TreeOptions {
   levelLimit?: number;
   offset?: number;
   limit?: number;
+  extraFields?: Array<"locked" | "id" | "count">;
   tags?: string[];
   includeTags?: boolean;
+}
+/** Directory listing page with pagination metadata. */
+export interface ListPage {
+  result: unknown[];
+  hasMore: boolean;
+}
+/** Directory tree page with pagination metadata. */
+export interface TreePage {
+  result: JsonObject[];
+  hasMore: boolean;
 }
 /** Session message payload. */
 export interface Message {
@@ -394,6 +406,7 @@ export interface APIErrorInfo {
 export interface ResponseEnvelope<T> {
   status?: string;
   result?: T;
+  has_more?: boolean;
   error?: APIErrorInfo;
   telemetry?: unknown;
   profile?: string[];

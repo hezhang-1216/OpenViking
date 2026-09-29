@@ -588,6 +588,7 @@ describe("OpenVikingClient", () => {
       includeAbstract: false,
       includeOverview: true,
       overviewLimit: 512,
+      extraFields: ["locked", "id"],
     });
     await client.list("viking://session");
     await client.tree("viking://resources/docs", {
@@ -598,6 +599,7 @@ describe("OpenVikingClient", () => {
       includeAbstract: false,
       includeOverview: true,
       overviewLimit: 512,
+      extraFields: ["count"],
     });
     await client.tree("viking://resources/docs", { levelLimit: 0 });
     await client.tree("viking://resources/docs");
@@ -611,6 +613,10 @@ describe("OpenVikingClient", () => {
     expect(listUrl.searchParams.get("include_abstract")).toBe("false");
     expect(listUrl.searchParams.get("include_overview")).toBe("true");
     expect(listUrl.searchParams.get("overview_limit")).toBe("512");
+    expect(listUrl.searchParams.getAll("extra_fields")).toEqual([
+      "locked",
+      "id",
+    ]);
     const defaultListUrl = new URL(String(fetcher.mock.calls[1]![0]));
     expect(defaultListUrl.searchParams.has("include_abstract")).toBe(false);
     expect(defaultListUrl.searchParams.has("include_overview")).toBe(false);
@@ -627,6 +633,7 @@ describe("OpenVikingClient", () => {
     expect(treeUrls[0]!.searchParams.get("include_abstract")).toBe("false");
     expect(treeUrls[0]!.searchParams.get("include_overview")).toBe("true");
     expect(treeUrls[0]!.searchParams.get("overview_limit")).toBe("512");
+    expect(treeUrls[0]!.searchParams.getAll("extra_fields")).toEqual(["count"]);
     expect(treeUrls[2]!.searchParams.has("include_abstract")).toBe(false);
     expect(treeUrls[2]!.searchParams.has("include_overview")).toBe(false);
     expect(treeUrls[2]!.searchParams.get("overview_limit")).toBe("4000");
@@ -635,6 +642,49 @@ describe("OpenVikingClient", () => {
     expect(treeUrls[1]!.searchParams.has("limit")).toBe(false);
     expect(treeUrls[2]!.searchParams.has("offset")).toBe(false);
     expect(treeUrls[2]!.searchParams.has("limit")).toBe(false);
+  });
+
+  it("returns pagination metadata without changing list and tree results", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: "ok",
+            result: [{ name: "docs" }],
+            has_more: true,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: "ok",
+            result: [{ name: "docs" }],
+            has_more: false,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(ok([{ name: "docs" }]));
+    const client = new OpenVikingClient({
+      baseUrl: "https://example.com",
+      fetch: fetcher,
+    });
+
+    await expect(client.listPage("viking://resources")).resolves.toEqual({
+      result: [{ name: "docs" }],
+      hasMore: true,
+    });
+    await expect(client.treePage("viking://resources")).resolves.toEqual({
+      result: [{ name: "docs" }],
+      hasMore: false,
+    });
+    await expect(client.list("viking://resources")).resolves.toEqual([
+      { name: "docs" },
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it("sends addResource tags and tagMode to the server", async () => {

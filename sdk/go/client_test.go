@@ -269,6 +269,9 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 				if got := r.URL.Query()["tags"]; !reflect.DeepEqual(got, []string{"env=prod", "team=search"}) {
 					t.Fatalf("tags = %#v", got)
 				}
+				if got := r.URL.Query()["extra_fields"]; !reflect.DeepEqual(got, []string{"locked", "id"}) {
+					t.Fatalf("extra_fields = %#v", got)
+				}
 				if got := r.URL.Query().Get("include_abstract"); got != "false" {
 					t.Fatalf("include_abstract = %q", got)
 				}
@@ -306,6 +309,9 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 				}
 				if got := r.URL.Query()["tags"]; !reflect.DeepEqual(got, []string{"env=prod"}) {
 					t.Fatalf("tags = %#v", got)
+				}
+				if got := r.URL.Query()["extra_fields"]; !reflect.DeepEqual(got, []string{"count"}) {
+					t.Fatalf("extra_fields = %#v", got)
 				}
 				if got := r.URL.Query().Get("include_abstract"); got != "false" {
 					t.Fatalf("include_abstract = %q", got)
@@ -353,6 +359,7 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 		Limit:           5,
 		SortBy:          "mtime",
 		SortOrder:       "desc",
+		ExtraFields:     []string{"locked", "id"},
 		Tags:            []string{"env=prod", "team=search"},
 		AbsLimit:        128,
 		IncludeAbstract: Bool(false),
@@ -369,6 +376,7 @@ func TestListAndTreeSendQueryOptions(t *testing.T) {
 		LevelLimit:      Int(0),
 		Offset:          6,
 		Limit:           7,
+		ExtraFields:     []string{"count"},
 		Tags:            []string{"env=prod"},
 		IncludeAbstract: Bool(false),
 		IncludeOverview: Bool(true),

@@ -494,16 +494,28 @@ def test_sync_http_client_reindex_forwards_to_async_client():
 def test_sync_http_client_forwards_tags_to_filesystem_methods():
     client = SyncHTTPClient(url="http://localhost:1933")
 
-    with patch.object(client._async_client, "ls", return_value=[]) as mock_ls:
-        with patch.object(client._async_client, "tree", return_value=[]) as mock_tree:
+    with patch.object(client._async_client, "ls_page", return_value={}) as mock_ls:
+        with patch.object(client._async_client, "tree_page", return_value={}) as mock_tree:
             with patch.object(client._async_client, "grep", return_value={}) as mock_grep:
-                with patch("openviking_sdk.client.run_async", side_effect=[[], [], {}]):
+                with patch(
+                    "openviking_sdk.client.run_async",
+                    side_effect=[
+                        {"result": [], "has_more": False},
+                        {"result": [], "has_more": False},
+                        {},
+                    ],
+                ):
                     client.ls("viking://resources", tags=["env=prod"])
-                    client.tree("viking://resources", tags=["env=prod"])
+                    client.tree(
+                        "viking://resources",
+                        tags=["env=prod"],
+                        directories_only=True,
+                    )
                     client.grep("viking://resources", "Sample", tags=["env=prod"])
 
     assert mock_ls.call_args.kwargs["tags"] == ["env=prod"]
     assert mock_tree.call_args.kwargs["tags"] == ["env=prod"]
+    assert mock_tree.call_args.kwargs["directories_only"] is True
     assert mock_grep.call_args.kwargs["tags"] == ["env=prod"]
 
 
@@ -1445,7 +1457,7 @@ async def test_ls_and_tree_pass_query_params():
     client = AsyncHTTPClient(url="http://localhost:1933")
     fake_http = SimpleNamespace(get=AsyncMock(return_value=object()))
     client._http = fake_http
-    client._handle_response = lambda _response: []
+    client._handle_response_data = lambda _response: {"result": []}
 
     await client.ls(
         "/resources/",
@@ -1459,8 +1471,17 @@ async def test_ls_and_tree_pass_query_params():
         limit=7,
         sort_by="mtime",
         sort_order="desc",
+        include_abstract=False,
+        include_overview=True,
+        overview_limit=512,
     )
-    await client.tree("viking://resources/", level_limit=2, offset=4, limit=6)
+    await client.tree(
+        "viking://resources/",
+        level_limit=2,
+        offset=4,
+        limit=6,
+        directories_only=True,
+    )
     await client.tree("viking://resources/", level_limit=0)
     await client.tree("viking://resources/")
 
@@ -1473,6 +1494,9 @@ async def test_ls_and_tree_pass_query_params():
             "recursive": True,
             "output": "agent",
             "abs_limit": 32,
+            "include_abstract": False,
+            "include_overview": True,
+            "overview_limit": 512,
             "show_all_hidden": True,
             "node_limit": 44,
             "offset": 5,
@@ -1486,6 +1510,36 @@ async def test_ls_and_tree_pass_query_params():
     assert [
         tree_call.kwargs["params"]["level_limit"] for tree_call in fake_http.get.await_args_list[1:]
     ] == [2, 0, 3]
+    assert "include_abstract" not in fake_http.get.await_args_list[1].kwargs["params"]
+    assert "include_overview" not in fake_http.get.await_args_list[1].kwargs["params"]
+    assert fake_http.get.await_args_list[1].kwargs["params"]["overview_limit"] == 4000
+    assert fake_http.get.await_args_list[1].kwargs["params"]["directories_only"] is True
+
+
+@pytest.mark.asyncio
+async def test_ls_page_and_tree_page_return_has_more_without_changing_legacy_results():
+    client = AsyncHTTPClient(url="http://localhost:1933")
+    fake_http = SimpleNamespace(get=AsyncMock(return_value=object()))
+    client._http = fake_http
+    responses = iter(
+        [
+            {"result": [{"name": "docs"}], "has_more": True},
+            {"result": [{"name": "docs"}], "has_more": False},
+            {"result": [{"name": "docs"}]},
+        ]
+    )
+    client._handle_response_data = lambda _response: next(responses)
+
+    assert await client.ls_page("viking://resources") == {
+        "result": [{"name": "docs"}],
+        "has_more": True,
+    }
+    assert await client.tree_page("viking://resources") == {
+        "result": [{"name": "docs"}],
+        "has_more": False,
+    }
+    assert await client.ls("viking://resources") == [{"name": "docs"}]
+    assert fake_http.get.await_count == 3
 
 
 @pytest.mark.asyncio

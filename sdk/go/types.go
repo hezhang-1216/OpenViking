@@ -200,6 +200,7 @@ type ListOptions struct {
 	Limit           int
 	SortBy          string
 	SortOrder       string
+	ExtraFields     []string
 	Tags            []string
 	IncludeTags     bool
 }
@@ -223,6 +224,7 @@ type TreeOptions struct {
 	LevelLimit      *int
 	Offset          int
 	Limit           int
+	ExtraFields     []string
 	Tags            []string
 	IncludeTags     bool
 }
