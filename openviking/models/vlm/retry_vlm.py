@@ -62,6 +62,7 @@ class RetryVLM(VLMBase):
             max_retries=self.max_retries,
             logger=logger,
             operation_name=f"{self.provider} VLM completion",
+            model_errors_only=True,
         )
 
     async def get_completion_async(
@@ -87,6 +88,7 @@ class RetryVLM(VLMBase):
             max_retries=self.max_retries,
             logger=logger,
             operation_name=f"{self.provider} VLM async completion",
+            model_errors_only=True,
         )
 
     def get_vision_completion(
@@ -112,6 +114,7 @@ class RetryVLM(VLMBase):
             max_retries=self.max_retries,
             logger=logger,
             operation_name=f"{self.provider} VLM vision completion",
+            model_errors_only=True,
         )
 
     async def get_vision_completion_async(
@@ -137,6 +140,7 @@ class RetryVLM(VLMBase):
             max_retries=self.max_retries,
             logger=logger,
             operation_name=f"{self.provider} VLM async vision completion",
+            model_errors_only=True,
         )
 
     def supports_media(

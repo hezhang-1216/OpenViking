@@ -6,20 +6,25 @@ from pathlib import Path
 
 import pytest
 
+from openviking.models.model_error import ModelError, ModelErrorKind
 from openviking.models.vlm.base import MultiCredentialVLM, VLMBase, VLMFactory
 from openviking.models.vlm.retry_vlm import RetryVLM
 from openviking_cli.utils.config.vlm_config import VLMConfig
 
 
-class ProviderError(RuntimeError):
+class ProviderError(ModelError):
     def __init__(self, status_code: int):
         messages = {
             400: "400 invalid parameter",
             401: "401 unauthorized",
             503: "503 service unavailable",
         }
-        super().__init__(messages[status_code])
-        self.status_code = status_code
+        kinds = {
+            400: ModelErrorKind.INVALID_REQUEST,
+            401: ModelErrorKind.AUTHENTICATION_ERROR,
+            503: ModelErrorKind.TRANSIENT_SERVICE_ERROR,
+        }
+        super().__init__(kinds[status_code], messages[status_code], status_code=status_code)
 
 
 class FakeVLM(VLMBase):

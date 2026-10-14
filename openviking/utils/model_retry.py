@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Awaitable, Callable, TypeVar
 
+from openviking.models.model_error import ModelErrorKind, model_error_from_exception
 from openviking.pyagfs.exceptions import AGFSNotADirectoryError
 from openviking.utils.exceptions import AllCredentialsFailedError
 
@@ -230,6 +231,23 @@ def classify_api_error(error: Exception) -> str:
             return ERROR_CLASS_AUTH
         return ERROR_CLASS_UNKNOWN
 
+    model_error = model_error_from_exception(error)
+    if model_error is not None:
+        return {
+            ModelErrorKind.TRANSIENT_SERVICE_ERROR: ERROR_CLASS_TRANSIENT,
+            ModelErrorKind.TRANSIENT_NETWORK_ERROR: ERROR_CLASS_TRANSIENT,
+            ModelErrorKind.RATE_LIMIT_ERROR: ERROR_CLASS_TRANSIENT,
+            ModelErrorKind.AUTHENTICATION_ERROR: ERROR_CLASS_AUTH,
+            ModelErrorKind.PERMISSION_DENIED: ERROR_CLASS_AUTH,
+            ModelErrorKind.QUOTA_EXHAUSTED: ERROR_CLASS_QUOTA_EXCEEDED,
+            ModelErrorKind.MODEL_NOT_FOUND: ERROR_CLASS_PERMANENT,
+            ModelErrorKind.UNSUPPORTED: ERROR_CLASS_PERMANENT,
+            ModelErrorKind.INVALID_REQUEST: ERROR_CLASS_PERMANENT,
+            ModelErrorKind.INPUT_TOO_LARGE: ERROR_CLASS_INPUT_TOO_LARGE,
+            ModelErrorKind.CONTENT_SAFETY: ERROR_CLASS_CONTENT_SAFETY,
+            ModelErrorKind.UNKNOWN: ERROR_CLASS_UNKNOWN,
+        }[model_error.kind]
+
     for exc in (error, getattr(error, "__cause__", None)):
         if exc is not None and isinstance(exc, _PERMANENT_IO_ERRORS):
             return ERROR_CLASS_PERMANENT
@@ -393,6 +411,28 @@ def _compute_delay(
     return delay
 
 
+def _retry_limit(
+    error: Exception,
+    *,
+    max_retries: int,
+    is_retryable: Callable[[Exception], bool],
+    model_errors_only: bool,
+) -> int:
+    model_error = model_error_from_exception(error)
+    if model_error is not None:
+        if model_error.kind in {
+            ModelErrorKind.TRANSIENT_SERVICE_ERROR,
+            ModelErrorKind.TRANSIENT_NETWORK_ERROR,
+            ModelErrorKind.RATE_LIMIT_ERROR,
+            ModelErrorKind.UNKNOWN,
+        }:
+            return max_retries
+        return 0
+    if model_errors_only:
+        return 0
+    return max_retries if is_retryable(error) else 0
+
+
 def retry_sync(
     func: Callable[[], T],
     *,
@@ -403,6 +443,7 @@ def retry_sync(
     is_retryable: Callable[[Exception], bool] = is_retryable_api_error,
     logger=None,
     operation_name: str = "operation",
+    model_errors_only: bool = False,
 ) -> T:
     """Retry a sync function on known transient errors."""
     attempt = 0
@@ -411,7 +452,13 @@ def retry_sync(
         try:
             return func()
         except Exception as e:
-            if max_retries <= 0 or attempt >= max_retries or not is_retryable(e):
+            retry_limit = _retry_limit(
+                e,
+                max_retries=max_retries,
+                is_retryable=is_retryable,
+                model_errors_only=model_errors_only,
+            )
+            if attempt >= retry_limit:
                 raise
 
             delay = _compute_delay(
@@ -425,7 +472,7 @@ def retry_sync(
                     "%s failed with retryable error (retry %d/%d): %s; retrying in %.2fs",
                     operation_name,
                     attempt + 1,
-                    max_retries,
+                    retry_limit,
                     e,
                     delay,
                 )
@@ -443,6 +490,7 @@ async def retry_async(
     is_retryable: Callable[[Exception], bool] = is_retryable_api_error,
     logger=None,
     operation_name: str = "operation",
+    model_errors_only: bool = False,
 ) -> T:
     """Retry an async function on known transient errors."""
     attempt = 0
@@ -451,7 +499,13 @@ async def retry_async(
         try:
             return await func()
         except Exception as e:
-            if max_retries <= 0 or attempt >= max_retries or not is_retryable(e):
+            retry_limit = _retry_limit(
+                e,
+                max_retries=max_retries,
+                is_retryable=is_retryable,
+                model_errors_only=model_errors_only,
+            )
+            if attempt >= retry_limit:
                 raise
 
             delay = _compute_delay(
@@ -465,7 +519,7 @@ async def retry_async(
                     "%s failed with retryable error (retry %d/%d): %s; retrying in %.2fs",
                     operation_name,
                     attempt + 1,
-                    max_retries,
+                    retry_limit,
                     e,
                     delay,
                 )

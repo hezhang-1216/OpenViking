@@ -40,6 +40,7 @@ class RetryEmbedder(EmbedderBase):
             max_retries=self.max_retries,
             logger=logger,
             operation_name=f"{self.provider} embedding",
+            model_errors_only=True,
         )
 
     async def embed_async(
@@ -53,6 +54,7 @@ class RetryEmbedder(EmbedderBase):
             max_retries=self.max_retries,
             logger=logger,
             operation_name=f"{self.provider} async embedding",
+            model_errors_only=True,
         )
 
     def prepare_embedding_input(self, content: EmbeddingInput) -> EmbeddingInput:

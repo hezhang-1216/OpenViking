@@ -4,6 +4,7 @@
 
 import pytest
 
+from openviking.models.model_error import ModelError, ModelErrorKind
 from openviking.pyagfs.exceptions import (
     AGFSClientError,
     AGFSConnectionError,
@@ -99,8 +100,18 @@ def test_extract_metric_error_code_uses_safe_fallbacks_only():
 def test_classify_all_credentials_failed_prefers_transient_over_auth():
     err = AllCredentialsFailedError(
         [
-            ("cred-a", ERROR_CLASS_AUTH, RuntimeError("401 Unauthorized"), 0),
-            ("cred-b", ERROR_CLASS_TRANSIENT, RuntimeError("500 server error"), 1),
+            (
+                "cred-a",
+                ERROR_CLASS_AUTH,
+                ModelError(ModelErrorKind.AUTHENTICATION_ERROR, "unauthorized"),
+                0,
+            ),
+            (
+                "cred-b",
+                ERROR_CLASS_TRANSIENT,
+                ModelError(ModelErrorKind.TRANSIENT_SERVICE_ERROR, "server error"),
+                1,
+            ),
         ]
     )
     assert classify_api_error(err) == ERROR_CLASS_TRANSIENT

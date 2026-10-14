@@ -10,6 +10,7 @@ from openviking.models.embedder import JinaDenseEmbedder
 from openviking.models.embedder.jina_embedders import (
     JINA_MODEL_DIMENSIONS,
 )
+from openviking.models.model_error import ModelError
 from openviking_cli.utils.config.embedding_config import EmbeddingModelConfig
 
 
@@ -240,7 +241,7 @@ class TestJinaDenseEmbedder:
             api_key="test-api-key",
         )
 
-        with pytest.raises(RuntimeError, match="Jina API error"):
+        with pytest.raises(ModelError, match="Jina API error"):
             embedder.embed("Hello world")
 
     def test_build_extra_body_none(self):
@@ -290,7 +291,7 @@ class TestJinaDenseEmbedder:
 
     @patch("openviking.models.embedder.jina_embedders.openai.OpenAI")
     def test_422_task_error_actionable_message(self, mock_openai_class):
-        """422 error mentioning 'task' should produce actionable RuntimeError."""
+        """422 error mentioning 'task' should preserve the actionable provider message."""
         import openai
 
         mock_client = MagicMock()
@@ -308,7 +309,7 @@ class TestJinaDenseEmbedder:
             api_key="test-key",
         )
 
-        with pytest.raises(RuntimeError, match="query_param.*document_param"):
+        with pytest.raises(ModelError, match="query_param.*document_param"):
             embedder.embed("hello")
 
     @patch("openviking.models.embedder.jina_embedders.openai.OpenAI")
@@ -331,7 +332,7 @@ class TestJinaDenseEmbedder:
             api_key="test-key",
         )
 
-        with pytest.raises(RuntimeError, match="Jina API error"):
+        with pytest.raises(ModelError, match="Jina API error"):
             embedder.embed("hello")
 
     def test_code_model_dimensions(self):

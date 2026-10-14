@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from openviking.models.model_error import ModelError
+
 
 def _make_mock_embedding(values):
     emb = MagicMock()
@@ -130,7 +132,7 @@ class TestGeminiDenseEmbedderEmbed:
         assert kwargs["config"].task_type == "RETRIEVAL_QUERY"
 
     @patch("openviking.models.embedder.gemini_embedders.genai.Client")
-    def test_embed_raises_runtime_error_on_api_error(self, mock_client_class):
+    def test_embed_raises_model_error_on_api_error(self, mock_client_class):
         from google.genai.errors import APIError
 
         from openviking.models.embedder.gemini_embedders import GeminiDenseEmbedder
@@ -140,7 +142,7 @@ class TestGeminiDenseEmbedderEmbed:
         mock_response.status_code = 401
         mock_client.models.embed_content.side_effect = APIError(401, {}, response=mock_response)
         embedder = GeminiDenseEmbedder("gemini-embedding-2-preview", api_key="key")
-        with pytest.raises(RuntimeError, match="Gemini embedding failed"):
+        with pytest.raises(ModelError, match="Gemini embedding failed"):
             embedder.embed("hello")
 
     @patch("openviking.models.embedder.gemini_embedders.genai.Client")
@@ -244,7 +246,7 @@ class TestGeminiErrorMessages:
         mock_resp.status_code = code
         mock.models.embed_content.side_effect = APIError(code, {}, response=mock_resp)
         embedder = GeminiDenseEmbedder("gemini-embedding-2-preview", api_key="k")
-        with pytest.raises(RuntimeError, match=match):
+        with pytest.raises(ModelError, match=match):
             embedder.embed("hello")
 
     @patch("openviking.models.embedder.gemini_embedders.genai.Client")
@@ -258,7 +260,7 @@ class TestGeminiErrorMessages:
         mock_resp.status_code = 404
         mock.models.embed_content.side_effect = APIError(404, {}, response=mock_resp)
         embedder = GeminiDenseEmbedder("gemini-embedding-2-preview", api_key="k")
-        with pytest.raises(RuntimeError, match="HTTP 404"):
+        with pytest.raises(ModelError, match="HTTP 404"):
             embedder.embed("hello")
 
 

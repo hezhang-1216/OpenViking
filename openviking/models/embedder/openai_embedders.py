@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 import openai
-from openviking_cli.utils import get_logger
 
 from openviking.models.embedder.base import (
     DenseEmbedderBase,
@@ -15,6 +14,7 @@ from openviking.models.embedder.base import (
     HybridEmbedderBase,
     SparseEmbedderBase,
 )
+from openviking.models.model_error import model_error_boundary
 from openviking.models.network import (
     create_optional_async_httpx_client,
     create_optional_sync_httpx_client,
@@ -22,6 +22,7 @@ from openviking.models.network import (
 from openviking.models.vlm.registry import DEFAULT_AZURE_API_VERSION
 from openviking.telemetry import get_current_telemetry
 from openviking.utils.async_client_cache import LoopScopedAsyncClientCache
+from openviking_cli.utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -362,6 +363,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
 
         return self._async_client_cache.get(_build_async_client)
 
+    @model_error_boundary
     def embed(self, text: EmbeddingInput | List[str], is_query: bool = False) -> EmbedResult:
         """Perform dense embedding on text, text batches, or multimodal content
 
@@ -400,6 +402,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         except Exception as e:
             raise RuntimeError(f"Embedding failed: {str(e)}") from e
 
+    @model_error_boundary
     async def embed_async(self, text: EmbeddingInput | List[str], is_query: bool = False) -> EmbedResult:
         client = self._get_async_client()
         embedding_input = self._prepare_embedding_input(text)

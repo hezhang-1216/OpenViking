@@ -15,6 +15,7 @@ from openviking.models.embedder.base import (
     SparseEmbedderBase,
 )
 from openviking.models.embedder.retry_embedder import RetryEmbedder
+from openviking.models.model_error import ModelError, ModelErrorKind
 from openviking.models.vlm.token_usage import TokenUsageTracker
 from openviking_cli.utils.config.embedding_config import (
     EmbeddingConfig,
@@ -23,10 +24,14 @@ from openviking_cli.utils.config.embedding_config import (
 )
 
 
-class ProviderError(RuntimeError):
+class ProviderError(ModelError):
     def __init__(self, status_code: int):
-        super().__init__(f"HTTP {status_code}")
-        self.status_code = status_code
+        kinds = {
+            400: ModelErrorKind.INVALID_REQUEST,
+            401: ModelErrorKind.AUTHENTICATION_ERROR,
+            503: ModelErrorKind.TRANSIENT_SERVICE_ERROR,
+        }
+        super().__init__(kinds[status_code], f"HTTP {status_code}", status_code=status_code)
 
 
 class FakeDenseEmbedder(DenseEmbedderBase):
