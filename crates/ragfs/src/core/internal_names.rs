@@ -6,7 +6,7 @@
 /// Path-lock marker for directory-level locks.
 pub const PATH_LOCK_FILE: &str = ".path.ovlock";
 
-/// Prefix for exact (sidecar) lock files: `.exact.ovlock.<safe_name>.<sha1-prefix>`.
+/// Prefix for sidecar lock files: `.exact.ovlock.<safe_name>.<sha1-prefix>`.
 pub const EXACT_LOCK_FILE_PREFIX: &str = ".exact.ovlock.";
 
 /// Returns `true` when `name` is a runtime path-lock file (`.path.ovlock` or `.exact.ovlock.*`).

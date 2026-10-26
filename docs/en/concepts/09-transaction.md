@@ -242,17 +242,17 @@ Locks coordinate participating operations. The low-level `PathLockWrappedFS` use
 
 ### Filesystem Provider Lock Protocol
 
-The caller chooses the lock type; the resolver chooses the token location from the target's state:
+The caller chooses the lock type. The filesystem provider uses a parent sidecar for every target:
 
 | Target state | Exact token | Tree token |
 | --- | --- | --- |
 | Existing file `/docs/a` | `/docs/.exact.ovlock.a.<hash>`, containing E | Same sidecar, containing T |
-| Existing directory `/docs/a` | `/docs/a/.path.ovlock`, containing E | Same file inside the directory, containing T |
-| Missing `/docs/a` | Parent sidecar, containing E | Create the target directory, then write `.path.ovlock` inside it, containing T |
+| Existing directory `/docs/a` | `/docs/.exact.ovlock.a.<hash>`, containing E | Same sidecar, containing T |
+| Missing `/docs/a` | `/docs/.exact.ovlock.a.<hash>`, containing E | Same sidecar, containing T |
 
-A sidecar sits beside its target but represents only that target, not its parent directory. `<hash>` is a SHA-1 prefix of the full backend path, not the business file's contents.
+A sidecar sits beside its target but represents only that target, not its parent directory. Recursively deleting the target does not delete the token in its parent, so mutual exclusion remains active until the lease is formally released. `<hash>` is a SHA-1 prefix of the full backend path, not the business file's contents.
 
-`.exact.ovlock.*` can contain a Tree token, and `.path.ovlock` can contain an Exact token. Filenames are part of the storage protocol, but do not alone identify the logical lock type. Token contents are:
+`.exact.ovlock.*` stores E or T according to the logical lock type. For compatibility with tokens left by older versions, conflict checks still read `.path.ovlock` inside the target, but new locks are no longer written there. Filenames are part of the storage protocol, but do not alone identify the logical lock type. Token contents are:
 
 ```text
 {owner_id}:{time_ns}:{lock_type}
@@ -321,8 +321,8 @@ loop until timeout (poll interval: 200ms):
        - Missing target directory? -> treat as no descendant locks
        - Stale lock? -> remove and retry
        - Active lock? -> wait
-    4. Ensure the resolved token parent exists; this creates a missing target as a directory
-    5. Write the TREE (T) token (sidecar for an existing file, internal .path.ovlock otherwise)
+    4. Ensure the resolved sidecar parent exists; do not create the missing target itself
+    5. Write the TREE (T) token to the parent sidecar
     6. TOCTOU double-check: re-scan descendants and ancestors
        - Conflict found: compare (timestamp, handle_id)
        - Later one (larger timestamp/handle_id) backs off (removes own lock) to prevent livelock
@@ -335,17 +335,17 @@ Timeout (default 0 = no-wait) raises LockAcquisitionError
 
 ### Missing Directory Creation
 
-The lock system may create directories so it can place lock files, but it checks
-for conflicts first:
+The lock system may create a missing parent chain so it can place a sidecar,
+but it does not create the locked target itself. It checks for conflicts first:
 
 ```
-1. Ancestor TreeLock / same-path lock / descendant lock conflict -> do not create the directory
-2. No current conflict -> create the directory and write the lock
+1. Ancestor TreeLock / same-path lock / descendant lock conflict -> do not create directories
+2. No current conflict -> create the sidecar parent and write the lock
 3. A post-write double-check finds a new conflict -> remove our own lock and fail or retry
 4. Step 3 does not roll back the empty directory
 ```
 
-Acquisition rollback and normal release clean up tokens without guaranteeing removal of directories created to store them. An Exact sidecar can also create a missing parent chain. Snapshots use a separate policy for missing targets; see [snapshot scope and concurrency](../guides/15-snapshot.md#commit-scope-and-concurrency).
+Acquisition rollback and normal release clean up tokens without guaranteeing removal of a parent chain created to store the sidecar. Snapshots use a separate policy for missing targets; see [snapshot scope and concurrency](../guides/15-snapshot.md#commit-scope-and-concurrency).
 
 ### Lock Expiry Cleanup
 

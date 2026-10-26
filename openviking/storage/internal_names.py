@@ -20,7 +20,7 @@ def is_storage_internal_name(name: str) -> bool:
     """Return whether ``name`` is multi-write metadata owned by the storage layer.
 
     Mirrors ``is_hidden_internal_name`` in ``crates/ragfs/src/core/internal_names.rs``:
-    the directory lock, exact (sidecar) locks, redirect and sync-log files that RAGFS
+    the legacy directory lock, sidecar locks, redirect and sync-log files that RAGFS
     keeps next to user content in any directory. Such an entry is hidden from every
     listing and must never be created, written, copied or moved by a user.
 

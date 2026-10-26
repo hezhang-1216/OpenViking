@@ -239,17 +239,17 @@ Exact 和 Tree 表达操作范围，文件、目录或缺失路径表达目标�
 
 ### Filesystem Provider 锁协议
 
-锁类型由调用者选择，Resolver 根据目标状态决定 token 位置：
+锁类型由调用者选择。Filesystem Provider 对所有目标统一使用父目录 sidecar：
 
 | 目标状态 | Exact token | Tree token |
 | --- | --- | --- |
 | 现存文件 `/docs/a` | `/docs/.exact.ovlock.a.<hash>`，内容为 E | 同一 sidecar，内容为 T |
-| 现存目录 `/docs/a` | `/docs/a/.path.ovlock`，内容为 E | 同一目录内文件，内容为 T |
-| 缺失路径 `/docs/a` | 父目录 sidecar，内容为 E | 创建目标目录后写内部 `.path.ovlock`，内容为 T |
+| 现存目录 `/docs/a` | `/docs/.exact.ovlock.a.<hash>`，内容为 E | 同一 sidecar，内容为 T |
+| 缺失路径 `/docs/a` | `/docs/.exact.ovlock.a.<hash>`，内容为 E | 同一 sidecar，内容为 T |
 
-sidecar 位于目标旁边，但只代表该目标，不会锁住整个父目录。`<hash>` 来自完整后端路径的 SHA-1 前缀，与业务文件内容无关。
+sidecar 位于目标旁边，但只代表该目标，不会锁住整个父目录。递归删除目标时不会删除位于父目录中的 token，因此锁的互斥保护会持续到 lease 正式释放。`<hash>` 来自完整后端路径的 SHA-1 前缀，与业务文件内容无关。
 
-`.exact.ovlock.*` 可以存 Tree token，`.path.ovlock` 也可以存 Exact token。文件名是存储协议的一部分，不能单凭名字判断逻辑锁类型。token 内容为：
+`.exact.ovlock.*` 根据实际锁类型存储 E 或 T。为兼容升级前遗留 token，冲突检测仍读取目标内部的 `.path.ovlock`，但新锁不再写入该位置。文件名是存储协议的一部分，不能单凭名字判断逻辑锁类型。token 内容为：
 
 ```text
 {owner_id}:{time_ns}:{lock_type}
@@ -318,8 +318,8 @@ HASH。跨 scope batch 会被拒绝。
        - 目标目录不存在？ -> 视为无后代锁
        - 陈旧锁？ -> 移除后重试
        - 活跃锁？ -> 等待
-    4. 确保 Resolver 选定的 token 父目录存在；缺失目标会因此被创建成目录
-    5. 写入 TREE (T) token（现存文件用 sidecar，其余用内部 .path.ovlock）
+    4. 确保 Resolver 选定的 sidecar 父目录存在；不会创建缺失目标本身
+    5. 在父目录 sidecar 写入 TREE (T) token
     6. TOCTOU 双重检查：重新扫描后代目录和祖先目录
        - 发现冲突：比较 (timestamp, handle_id)
        - 后到者（更大的 timestamp/handle_id）主动让步（删除自己的锁），防止活锁
@@ -332,11 +332,11 @@ HASH。跨 scope batch 会被拒绝。
 
 ### 缺失目录创建规则
 
-锁系统允许为了放置锁文件而创建目录，但创建前必须先检查冲突：
+锁系统允许为了放置 sidecar 而创建缺失的父目录链，但不会创建被锁目标本身。创建前必须先检查冲突：
 
 ```
 1. 发现祖先 TreeLock / 同路径锁 / 后代锁冲突 -> 不创建目录，直接失败或等待
-2. 当前无冲突 -> 可以创建目录并写锁
+2. 当前无冲突 -> 可以创建 sidecar 的父目录并写锁
 3. 写锁后再次检查时发现新冲突 -> 删除自己的锁并失败或重试
 4. 第 3 步不会回滚刚创建的空目录
 ```
@@ -353,10 +353,9 @@ HASH。跨 scope batch 会被拒绝。
 ```
 
 如果两个请求同时创建 `java-guide`，两边都可能先看到“当前无冲突”，但最终只有
-fencing token 校验通过的一方成功持有 `TreeLock(java-guide)`；失败方会删除自己的锁，
-已创建出来的空目录可以保留。
+fencing token 校验通过的一方成功持有 `TreeLock(java-guide)`；失败方会删除自己的锁。
 
-获取失败的回滚和正常释放只清理 token，不保证删除为存放 token 创建的目录。Exact sidecar 也可能创建缺失的父目录链。Snapshot 对缺失目标采用单独的策略，见 [快照的范围与并发](../guides/15-snapshot.md#提交范围与并发)。
+获取失败的回滚和正常释放只清理 token，不保证删除为存放 sidecar 创建的父目录链。Snapshot 对缺失目标采用单独的策略，见 [快照的范围与并发](../guides/15-snapshot.md#提交范围与并发)。
 
 ### 锁过期清理
 

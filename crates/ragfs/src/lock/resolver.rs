@@ -20,7 +20,7 @@ pub(crate) struct ResolvedExactPaths {
 
 /// Computes lock-file paths for exact and tree locks.
 pub struct LockPathResolver {
-    /// Filesystem used for `stat` calls to determine is_dir.
+    /// Filesystem retained for lock-directory creation and compatibility checks.
     pub(crate) fs: Arc<dyn FileSystem>,
 }
 
@@ -32,17 +32,13 @@ impl LockPathResolver {
 
     /// Compute exact lock paths for `path`.
     ///
-    /// - Existing directory → `{path}/.path.ovlock`
-    /// - File or non-existent path → `{parent}/.exact.ovlock.<safe_name>.<sha1-prefix>`
+    /// All paths use a parent sidecar so deleting a directory cannot delete its own token.
     pub async fn resolve_exact_lock_paths(&self, path: &str) -> PathLockResult<Vec<String>> {
         Ok(vec![self.resolve_exact_lock_path(path).await?])
     }
 
     /// Compute every lock-file path that can represent an exact lock for conflict checks.
-    pub async fn resolve_exact_conflict_paths(
-        &self,
-        path: &str,
-    ) -> PathLockResult<Vec<String>> {
+    pub async fn resolve_exact_conflict_paths(&self, path: &str) -> PathLockResult<Vec<String>> {
         Ok(self.resolve_exact_paths(path).await?.conflict_paths)
     }
 
@@ -51,18 +47,13 @@ impl LockPathResolver {
         Ok(self.resolve_exact_paths(path).await?.acquire_lock_path)
     }
 
-    /// Resolve the exact acquire path and its conservative conflict set using one `stat`.
-    pub(crate) async fn resolve_exact_paths(&self, path: &str) -> PathLockResult<ResolvedExactPaths> {
-        let stat_result = self.fs.stat(path).await;
-        let acquire_lock_path = match stat_result {
-            Ok(info) if info.is_dir => path_lock_path(path),
-            _ => prefixed_exact_lock_path(path),
-        };
-        let conflict_paths = if acquire_lock_path == path_lock_path(path) {
-            vec![acquire_lock_path.clone(), prefixed_exact_lock_path(path)]
-        } else {
-            vec![acquire_lock_path.clone(), path_lock_path(path)]
-        };
+    /// Resolve the sidecar acquire path and include the legacy in-directory token for conflicts.
+    pub(crate) async fn resolve_exact_paths(
+        &self,
+        path: &str,
+    ) -> PathLockResult<ResolvedExactPaths> {
+        let acquire_lock_path = prefixed_exact_lock_path(path);
+        let conflict_paths = vec![acquire_lock_path.clone(), path_lock_path(path)];
         Ok(ResolvedExactPaths {
             acquire_lock_path,
             conflict_paths,
@@ -71,17 +62,9 @@ impl LockPathResolver {
 
     /// Compute the tree lock path for `path`.
     ///
-    /// - Regular directory or missing path → `{path}/.path.ovlock`
-    /// - Existing file path → parent directory sidecar
+    /// Tree and exact locks share one parent sidecar; the token records `T` or `E`.
     pub async fn resolve_tree_lock_path(&self, path: &str) -> PathLockResult<String> {
-        let stat_result = self.fs.stat(path).await;
-        match stat_result {
-            Ok(info) if !info.is_dir => {
-                // Existing file: use parent sidecar to avoid `{file}/.path.ovlock`.
-                Ok(prefixed_exact_lock_path(path))
-            }
-            _ => Ok(path_lock_path(path)),
-        }
+        Ok(prefixed_exact_lock_path(path))
     }
 }
 
@@ -137,7 +120,10 @@ fn safe_name(name: &str) -> String {
 /// First 16 hex chars of SHA-1 of the full backend path.
 fn hash_prefix(path: &str) -> String {
     let digest = Sha1::digest(path.as_bytes());
-    digest[..8].iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    digest[..8]
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>()
 }
 
 #[cfg(test)]
@@ -154,7 +140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolver_uses_path_lock_for_directories_and_sidecars_for_files() {
+    async fn resolver_uses_parent_sidecars_for_all_paths() {
         let fs = memfs().await;
         fs.mkdir("/data/dir", 0o755).await.unwrap();
         fs.write("/data/file.txt", b"", 0, WriteFlag::Create)
@@ -162,13 +148,21 @@ mod tests {
             .unwrap();
         let resolver = LockPathResolver::new(fs);
 
-        assert_eq!(
-            resolver.resolve_exact_lock_paths("/data/dir").await.unwrap(),
-            vec!["/data/dir/.path.ovlock".to_string()]
-        );
+        let exact_dir = resolver
+            .resolve_exact_lock_paths("/data/dir")
+            .await
+            .unwrap();
+        assert!(exact_dir[0].starts_with("/data/.exact.ovlock.dir."));
         assert_eq!(
             resolver.resolve_tree_lock_path("/data/dir").await.unwrap(),
-            "/data/dir/.path.ovlock"
+            exact_dir[0]
+        );
+        assert_eq!(
+            resolver
+                .resolve_exact_conflict_paths("/data/dir")
+                .await
+                .unwrap(),
+            vec![exact_dir[0].clone(), "/data/dir/.path.ovlock".to_string()]
         );
 
         let exact_file = resolver
