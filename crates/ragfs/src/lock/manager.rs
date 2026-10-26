@@ -2497,6 +2497,38 @@ mod tests {
         )
     }
 
+    async fn make_filesystem_managers() -> (PathLockManager, PathLockManager) {
+        let fs = Arc::new(MemFileSystem::new());
+        fs.mkdir("/data", 0o755).await.unwrap();
+        fs.mkdir("/data/a", 0o755).await.unwrap();
+        fs.mkdir("/data/a/b", 0o755).await.unwrap();
+        fs.mkdir("/data/a/c", 0o755).await.unwrap();
+        let config = PathLockConfig::default();
+        let first_provider = Arc::new(crate::lock::provider::FilesystemPathLockProvider::new(
+            fs.clone(),
+            config.lock_expire_secs,
+        ));
+        let second_provider = Arc::new(crate::lock::provider::FilesystemPathLockProvider::new(
+            fs.clone(),
+            config.lock_expire_secs,
+        ));
+        (
+            PathLockManager::new(fs.clone(), first_provider, config.clone()),
+            PathLockManager::new(fs, second_provider, config),
+        )
+    }
+
+    async fn acquire_kind(
+        manager: &PathLockManager,
+        path: &str,
+        kind: PathLockKind,
+    ) -> PathLockResult<OwnedPathLockLease> {
+        match kind {
+            PathLockKind::Exact => manager.acquire_exact(path, Duration::ZERO, None).await,
+            PathLockKind::Tree => manager.acquire_tree(path, Duration::ZERO, None).await,
+        }
+    }
+
     #[tokio::test]
     async fn exact_locks_tolerate_concurrent_parent_directory_creation() {
         let inner = Arc::new(MemFileSystem::new());
@@ -2693,6 +2725,109 @@ mod tests {
             Err(PathLockError::Timeout { .. })
         ));
         mgr.release(&tree).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn filesystem_lock_relationship_matrix() {
+        struct Case {
+            name: &'static str,
+            held_path: &'static str,
+            held_kind: PathLockKind,
+            requested_path: &'static str,
+            requested_kind: PathLockKind,
+            conflicts: bool,
+        }
+
+        let cases = [
+            Case {
+                name: "ancestor tree blocks descendant exact",
+                held_path: "/data/a",
+                held_kind: PathLockKind::Tree,
+                requested_path: "/data/a/b",
+                requested_kind: PathLockKind::Exact,
+                conflicts: true,
+            },
+            Case {
+                name: "descendant exact blocks ancestor tree",
+                held_path: "/data/a/b",
+                held_kind: PathLockKind::Exact,
+                requested_path: "/data/a",
+                requested_kind: PathLockKind::Tree,
+                conflicts: true,
+            },
+            Case {
+                name: "ancestor tree blocks descendant tree",
+                held_path: "/data/a",
+                held_kind: PathLockKind::Tree,
+                requested_path: "/data/a/b",
+                requested_kind: PathLockKind::Tree,
+                conflicts: true,
+            },
+            Case {
+                name: "descendant tree blocks ancestor tree",
+                held_path: "/data/a/b",
+                held_kind: PathLockKind::Tree,
+                requested_path: "/data/a",
+                requested_kind: PathLockKind::Tree,
+                conflicts: true,
+            },
+            Case {
+                name: "ancestor exact allows descendant exact",
+                held_path: "/data/a",
+                held_kind: PathLockKind::Exact,
+                requested_path: "/data/a/b",
+                requested_kind: PathLockKind::Exact,
+                conflicts: false,
+            },
+            Case {
+                name: "descendant exact allows ancestor exact",
+                held_path: "/data/a/b",
+                held_kind: PathLockKind::Exact,
+                requested_path: "/data/a",
+                requested_kind: PathLockKind::Exact,
+                conflicts: false,
+            },
+            Case {
+                name: "sibling tree allows sibling exact",
+                held_path: "/data/a/b",
+                held_kind: PathLockKind::Tree,
+                requested_path: "/data/a/c",
+                requested_kind: PathLockKind::Exact,
+                conflicts: false,
+            },
+            Case {
+                name: "sibling tree allows sibling tree",
+                held_path: "/data/a/b",
+                held_kind: PathLockKind::Tree,
+                requested_path: "/data/a/c",
+                requested_kind: PathLockKind::Tree,
+                conflicts: false,
+            },
+        ];
+
+        for case in cases {
+            let (holder, contender) = make_filesystem_managers().await;
+            let held = acquire_kind(&holder, case.held_path, case.held_kind)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!("{}: failed to acquire held lock: {error}", case.name)
+                });
+            let requested =
+                acquire_kind(&contender, case.requested_path, case.requested_kind).await;
+
+            if case.conflicts {
+                assert!(
+                    matches!(requested, Err(PathLockError::Timeout { .. })),
+                    "{}: expected conflict, got {requested:?}",
+                    case.name
+                );
+            } else {
+                let requested = requested
+                    .unwrap_or_else(|error| panic!("{}: unexpected conflict: {error}", case.name));
+                contender.release(&requested).await.unwrap();
+            }
+            holder.release(&held).await.unwrap();
+        }
     }
 
     #[tokio::test]
