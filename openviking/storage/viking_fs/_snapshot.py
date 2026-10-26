@@ -256,9 +256,15 @@ class _SnapshotMixin:
 
         from openviking.storage.errors import LockAcquisitionError, ResourceBusyError
 
-        # Lock by current state: Tree for a directory or missing target, Exact
-        # for a file. Filesystem Tree tokens use parent sidecars, so locking a
-        # missing target no longer recreates the target itself.
+        # Lock by current state: Tree for a directory, Exact for a file. With
+        # the filesystem PathLock provider a missing target gets no lock: a
+        # Tree token there is stored as `{target}/.path.ovlock`, which creates
+        # the target as a directory, and an Exact sidecar creates a missing
+        # parent chain (#4966). Nothing is read under a missing name; the
+        # commit only records its deletion. If another writer recreates the
+        # name meanwhile the snapshot may miss it or read a partially written
+        # file; the next commit records the final content. The cache (Redis)
+        # provider keeps tokens off the filesystem, so it takes Tree as usual.
         missing_kind = self._snapshot_missing_target_lock_kind()
         lock_requests: List[Dict[str, str]] = []
         tree_roots: List[str] = []
@@ -302,8 +308,14 @@ class _SnapshotMixin:
 
     @staticmethod
     def _snapshot_missing_target_lock_kind() -> Optional[str]:
-        """Lock kind for a missing commit target."""
-        return "tree"
+        """Lock kind for a missing commit target: Tree on Redis, none on filesystem."""
+        try:
+            from openviking_cli.utils.config.open_viking_config import get_openviking_config
+
+            provider = get_openviking_config().storage.agfs.pathlock.provider
+        except Exception:
+            provider = "filesystem"
+        return "tree" if provider == "cache" else None
 
     async def restore(
         self,

@@ -259,6 +259,17 @@ sidecar 位于目标旁边，但只代表该目标，不会锁住整个父目录
 
 lease 将逻辑范围 `covered_paths` 与 token 位置 `lock_paths` 分开记录。Owned lease 控制续期、释放和交接；Borrowed lease 仅提供已有锁的覆盖证明，不能释放外层锁。
 
+#### 协议迁移与发布
+
+新版本对新 sidecar 和旧 `.path.ovlock` 执行双读，但只向新 sidecar 写入 token。升级前已存在的 lease 不做原地迁移：续期、释放和交接继续使用 lease 中记录的旧 `lock_paths`，直到旧 token 正常释放或过期。
+
+旧版本不会检查祖先路径的新 sidecar，因此 Filesystem Provider 不能让新旧版本在同一后端上同时处理写请求。当前版本采用协调切换：
+
+1. 停止新的写请求，等待活跃 lease 和待交接任务排空，然后停止所有旧实例。
+2. 全量启动新版本实例，确认旧 token 已释放或可按过期规则回收，再恢复写流量。
+
+如果部署必须保持零停机滚动升级，需要拆成两个可独立发布的协议阶段：先发布“新旧双读、仍写旧 token”的兼容版本；全部实例升级后，再统一切换为“新旧双读、只写新 sidecar”。两个阶段之间不得存在旧实例读取新 sidecar 的窗口。
+
 ### Cache Provider 锁协议
 
 Cache Provider 将相同 token 格式存入 Redis HASH field，并通过 Lua

@@ -109,4 +109,10 @@ async def test_commit_lock_kinds_follow_target_state(snapshot_env, monkeypatch):
     targets = [f"{base}/dir", f"{base}/file.md", f"{base}/missing.md"]
 
     await vfs.commit(message="filesystem provider", paths=targets, ctx=ctx)
+    assert seen[-1] == [("dir", "tree"), ("file.md", "exact")]
+
+    monkeypatch.setattr(
+        type(vfs), "_snapshot_missing_target_lock_kind", staticmethod(lambda: "tree")
+    )
+    await vfs.commit(message="cache provider", paths=targets, ctx=ctx)
     assert seen[-1] == [("dir", "tree"), ("file.md", "exact"), ("missing.md", "tree")]

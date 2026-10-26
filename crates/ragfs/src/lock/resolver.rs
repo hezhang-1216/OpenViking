@@ -18,6 +18,15 @@ pub(crate) struct ResolvedExactPaths {
     pub conflict_paths: Vec<String>,
 }
 
+/// Tree-lock paths resolved for new writes plus legacy reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedTreePaths {
+    /// Lock path used for the actual tree token creation.
+    pub acquire_lock_path: String,
+    /// Paths that may contain a tree token for the same logical path.
+    pub conflict_paths: Vec<String>,
+}
+
 /// Computes lock-file paths for exact and tree locks.
 pub struct LockPathResolver {
     /// Filesystem retained for lock-directory creation and compatibility checks.
@@ -60,11 +69,41 @@ impl LockPathResolver {
         })
     }
 
-    /// Compute the tree lock path for `path`.
-    ///
-    /// Tree and exact locks share one parent sidecar; the token records `T` or `E`.
+    /// Compute every lock-file path that can represent a tree lock.
+    pub async fn resolve_tree_conflict_paths(&self, path: &str) -> PathLockResult<Vec<String>> {
+        Ok(self.resolve_tree_paths(path).await?.conflict_paths)
+    }
+
+    /// Compute the primary lock-file path used when acquiring one tree lock.
     pub async fn resolve_tree_lock_path(&self, path: &str) -> PathLockResult<String> {
-        Ok(prefixed_exact_lock_path(path))
+        Ok(self.resolve_tree_paths(path).await?.acquire_lock_path)
+    }
+
+    /// Resolve the shared sidecar acquire path and include the legacy tree token for reads.
+    pub(crate) async fn resolve_tree_paths(&self, path: &str) -> PathLockResult<ResolvedTreePaths> {
+        let acquire_lock_path = prefixed_exact_lock_path(path);
+        let conflict_paths = vec![acquire_lock_path.clone(), path_lock_path(path)];
+        Ok(ResolvedTreePaths {
+            acquire_lock_path,
+            conflict_paths,
+        })
+    }
+
+    /// Return every ancestor path from nearest parent to root.
+    pub(crate) fn ancestor_paths(path: &str) -> Vec<String> {
+        let mut current = path.to_string();
+        let mut ancestors = Vec::new();
+
+        loop {
+            let parent = match current.rsplit_once('/') {
+                Some((p, _)) if !p.is_empty() => p.to_string(),
+                Some(_) if current != "/" => "/".to_string(),
+                _ => break,
+            };
+            ancestors.push(parent.clone());
+            current = parent;
+        }
+        ancestors
     }
 }
 
@@ -76,13 +115,17 @@ fn path_lock_path(path: &str) -> String {
 /// Return the legacy-compatible prefixed exact sidecar path.
 fn prefixed_exact_lock_path(path: &str) -> String {
     let (parent, name) = split_parent_name(path);
-    format!(
-        "{}/{}{}.{}",
-        parent,
+    let file_name = format!(
+        "{}{}.{}",
         EXACT_LOCK_FILE_PREFIX,
         safe_name(name),
         hash_prefix(path)
-    )
+    );
+    if parent == "/" {
+        format!("/{file_name}")
+    } else {
+        format!("{parent}/{file_name}")
+    }
 }
 
 /// Split a path into (parent_dir, basename).
@@ -159,6 +202,13 @@ mod tests {
         );
         assert_eq!(
             resolver
+                .resolve_tree_conflict_paths("/data/dir")
+                .await
+                .unwrap(),
+            vec![exact_dir[0].clone(), "/data/dir/.path.ovlock".to_string()]
+        );
+        assert_eq!(
+            resolver
                 .resolve_exact_conflict_paths("/data/dir")
                 .await
                 .unwrap(),
@@ -180,6 +230,31 @@ mod tests {
             .await
             .unwrap()[0]
             .starts_with("/data/.exact.ovlock.new.txt."));
+        assert!(resolver
+            .resolve_tree_lock_path("/top-level")
+            .await
+            .unwrap()
+            .starts_with("/.exact.ovlock.top-level."));
+        assert!(!resolver
+            .resolve_tree_lock_path("/top-level")
+            .await
+            .unwrap()
+            .starts_with("//"));
+        assert!(resolver
+            .resolve_tree_lock_path("/")
+            .await
+            .unwrap()
+            .starts_with("/.exact.ovlock.path."));
+    }
+
+    #[test]
+    fn ancestor_paths_run_from_nearest_parent_to_root() {
+        assert_eq!(
+            LockPathResolver::ancestor_paths("/data/a/b"),
+            vec!["/data/a", "/data", "/"]
+        );
+        assert_eq!(LockPathResolver::ancestor_paths("/data"), vec!["/"]);
+        assert!(LockPathResolver::ancestor_paths("/").is_empty());
     }
 
     #[test]

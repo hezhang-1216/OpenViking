@@ -1049,15 +1049,13 @@ impl PathLockManager {
                         });
                     }
                     PathLockKind::Tree => {
-                        let lock_path = self.resolver.resolve_tree_lock_path(&request.path).await?;
+                        let resolved = self.resolver.resolve_tree_paths(&request.path).await?;
                         self.check_ancestor_tree_locks(&request.path, owner_id)
                             .await?;
-                        let exact_candidates = self
-                            .resolver
-                            .resolve_exact_conflict_paths(&request.path)
+                        self.check_lock_paths(&resolved.conflict_paths, owner_id)
                             .await?;
-                        self.check_lock_paths(&exact_candidates, owner_id).await?;
                         self.check_descendant_locks(&request.path, owner_id).await?;
+                        let lock_path = resolved.acquire_lock_path;
                         self.ensure_lock_dir(&lock_path).await.map_err(|error| {
                             PathLockError::Io(format!("failed to create lock dir: {error}"))
                         })?;
@@ -1099,11 +1097,11 @@ impl PathLockManager {
                     PathLockKind::Tree => {
                         self.check_ancestor_tree_locks(&request.path, owner_id)
                             .await?;
-                        let exact_candidates = self
+                        let tree_candidates = self
                             .resolver
-                            .resolve_exact_conflict_paths(&request.path)
+                            .resolve_tree_conflict_paths(&request.path)
                             .await?;
-                        self.check_lock_paths(&exact_candidates, owner_id).await?;
+                        self.check_lock_paths(&tree_candidates, owner_id).await?;
                         self.check_descendant_locks(&request.path, owner_id).await?;
                     }
                 }
@@ -1252,17 +1250,10 @@ impl PathLockManager {
 
     /// Check ancestor directories for tree locks that would conflict.
     async fn check_ancestor_tree_locks(&self, path: &str, owner_id: &str) -> PathLockResult<()> {
-        let mut current = path.to_string();
         let now_ns = Self::now_ns();
 
-        loop {
-            let parent = match current.rsplit_once('/') {
-                Some((p, _)) if !p.is_empty() => p.to_string(),
-                Some(_) if current != "/" => "/".to_string(),
-                _ => break,
-            };
-
-            for ancestor_lock in self.resolver.resolve_exact_conflict_paths(&parent).await? {
+        for parent in LockPathResolver::ancestor_paths(path) {
+            for ancestor_lock in self.resolver.resolve_tree_conflict_paths(&parent).await? {
                 if let Some(token) = self.provider.read_token(&ancestor_lock).await? {
                     // Only Tree locks propagate to descendants; an Exact lock on
                     // /a must not block /a/b.
@@ -1278,8 +1269,6 @@ impl PathLockManager {
                     }
                 }
             }
-
-            current = parent;
         }
         Ok(())
     }
@@ -1876,7 +1865,7 @@ impl PathLockManager {
                         }
                         PathLockKind::Tree => {
                             self.resolver
-                                .resolve_exact_conflict_paths(&request.path)
+                                .resolve_tree_conflict_paths(&request.path)
                                 .await?
                         }
                     };
@@ -1994,7 +1983,10 @@ impl PathLockManager {
         }
 
         // Check the current sidecar and the legacy in-directory token.
-        let exact_paths = self.resolver.resolve_exact_conflict_paths(path).await?;
+        let exact_paths = self
+            .resolver
+            .resolve_exact_conflict_paths(&normalized_path)
+            .await?;
         for lp in &exact_paths {
             if let Ok(Some(token)) = self.provider.read_token(lp).await {
                 if !ignore_stale || !self.is_stale(&token, now_ns) {
@@ -2004,14 +1996,8 @@ impl PathLockManager {
         }
 
         // Check ancestor tree locks.
-        let mut current = path.to_string();
-        loop {
-            let parent = match current.rsplit_once('/') {
-                Some((p, _)) if !p.is_empty() => p.to_string(),
-                Some(_) if current != "/" => "/".to_string(),
-                _ => break,
-            };
-            for ancestor_lock in self.resolver.resolve_exact_conflict_paths(&parent).await? {
+        for parent in LockPathResolver::ancestor_paths(&normalized_path) {
+            for ancestor_lock in self.resolver.resolve_tree_conflict_paths(&parent).await? {
                 if let Ok(Some(token)) = self.provider.read_token(&ancestor_lock).await {
                     // Only Tree locks propagate to descendants.
                     if token.lock_type == PathLockKind::Tree
@@ -2021,7 +2007,6 @@ impl PathLockManager {
                     }
                 }
             }
-            current = parent;
         }
 
         Ok(false)

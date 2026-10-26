@@ -262,6 +262,17 @@ A sidecar sits beside its target but represents only that target, not its parent
 
 A lease records logical scope in `covered_paths` separately from token locations in `lock_paths`. An owned lease controls refresh, release, and handoff. A borrowed lease proves coverage by an existing lock without permission to release the outer lock.
 
+#### Protocol Migration and Deployment
+
+The new version reads both the new sidecar and the legacy `.path.ovlock`, but writes new tokens only to the sidecar. Existing leases are not migrated in place: refresh, release, and handoff continue to use the legacy `lock_paths` recorded by the lease until those tokens are released or expire.
+
+Old versions do not inspect new ancestor sidecars, so filesystem-provider instances of different protocol versions must not process writes against the same backend concurrently. The current version requires a coordinated cutover:
+
+1. Stop new writes, wait for active leases and pending handoffs to drain, then stop every old instance.
+2. Start all new instances, confirm legacy tokens were released or can be reclaimed by expiry, then resume writes.
+
+A zero-downtime rolling deployment requires two independently deployable protocol stages: first deploy a compatibility version that reads both formats but still writes legacy tokens; after every instance is upgraded, switch all instances to reading both formats and writing only new sidecars. There must be no interval where an old instance can encounter a new sidecar.
+
 ### Cache Provider Lock Protocol
 
 The cache provider stores the same token format in Redis HASH fields. It uses
